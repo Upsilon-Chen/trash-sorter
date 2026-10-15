@@ -514,30 +514,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     LOGGER.info("后端启动中：模型目录=%s，类别数=%d", model_dir, len(services.pipeline.class_table()))
 
-    # --- 自动加载模型 ---
-    default_model = services.detector.pick_default_model()
-    if default_model:
-        try:
-            await asyncio.to_thread(services.detector.load_model, default_model)
-        except Exception as exc:
-            LOGGER.warning("自动加载模型失败（可通过 /api/models/select 手动切换）: %s", exc)
-    else:
-        LOGGER.warning("模型目录中没有 .pt 文件：%s", model_dir)
+    # --- 重活全部丢到后台，先让 uvicorn 开始监听 ---
+    # 为什么要这样：模型加载（导入 torch + 加载权重 + 预热）和打开摄像头加起来要十几秒，
+    # 以前是在这里 await 的，导致 uvicorn 在全部干完前不 accept 请求 —— 前端窗口只能空等。
+    # 现在 lifespan 立刻返回，界面 1~2 秒就能出来，模型/摄像头在后台加载，
+    # 前端本来就会显示"模型未加载"并轮询 /api/models，加载完自动变"就绪"。
+    async def warm_up() -> None:
+        default_model = services.detector.pick_default_model()
+        if default_model:
+            try:
+                await asyncio.to_thread(services.detector.load_model, default_model)
+            except Exception as exc:
+                LOGGER.warning("自动加载模型失败（可通过 /api/models/select 手动切换）: %s", exc)
+        else:
+            LOGGER.warning("模型目录中没有 .pt 文件：%s", model_dir)
 
-    # --- 自动打开摄像头 ---
-    autostart_index = settings["camera"].get("autostart_index")
-    if autostart_index is not None:
-        try:
-            await asyncio.to_thread(services.camera.open, int(autostart_index))
-        except Exception as exc:
-            LOGGER.warning("自动打开摄像头 %s 失败（可在前端手动选择）: %s", autostart_index, exc)
+        autostart_index = settings["camera"].get("autostart_index")
+        if autostart_index is not None:
+            try:
+                await asyncio.to_thread(services.camera.open, int(autostart_index))
+            except Exception as exc:
+                LOGGER.warning("自动打开摄像头 %s 失败（可在前端手动选择）: %s", autostart_index, exc)
 
-    # --- 自动连接串口 ---
-    if settings["serial"].get("autoconnect"):
-        try:
-            await asyncio.to_thread(services.serial.connect, None, None)
-        except Exception as exc:
-            LOGGER.warning("自动连接串口失败（可在前端手动选择）: %s", exc)
+        if settings["serial"].get("autoconnect"):
+            try:
+                await asyncio.to_thread(services.serial.connect, None, None)
+            except Exception as exc:
+                LOGGER.warning("自动连接串口失败（可在前端手动选择）: %s", exc)
+        LOGGER.info("后台预热完成（模型 / 摄像头 / 串口）")
+
+    services.tasks.append(asyncio.create_task(warm_up(), name="warm-up"))
 
     LOGGER.info("后端就绪，等待前端连接")
     try:

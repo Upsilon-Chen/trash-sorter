@@ -19,8 +19,10 @@
 
 import { useEffect, useRef } from 'react';
 
-/** 缓动系数：越小越"黏"，0.08 左右既有跟随感又不飘 */
-const EASE = 0.075;
+/** 光晕位置：直接跟手（不做插值），要的就是"无缝" */
+const SPOT_DIRECT = true;
+/** 视差/卡片柔光用的缓动：略微阻尼，避免整页抖动 */
+const EASE = 0.42;
 /** 每帧最多推进的时间，避免切回标签页时一步跳到位 */
 const MAX_STEP = 40;
 
@@ -71,8 +73,10 @@ export default function Ambient() {
       // 归一化到 [-1, 1]，供 CSS 做视差与光晕定位
       root.style.setProperty('--mx', ((currentX / width) * 2 - 1).toFixed(4));
       root.style.setProperty('--my', ((currentY / height) * 2 - 1).toFixed(4));
+      const spotX = SPOT_DIRECT ? targetX : currentX;
+      const spotY = SPOT_DIRECT ? targetY : currentY;
       if (spotRef.current) {
-        spotRef.current.style.transform = `translate3d(${currentX.toFixed(1)}px, ${currentY.toFixed(1)}px, 0)`;
+        spotRef.current.style.transform = `translate3d(${spotX.toFixed(1)}px, ${spotY.toFixed(1)}px, 0)`;
       }
 
       const settled = Math.abs(targetX - currentX) < 0.4 && Math.abs(targetY - currentY) < 0.4;

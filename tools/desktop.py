@@ -361,6 +361,46 @@ SPLASH_HTML = """<!doctype html>
 </div></body></html>"""
 
 
+
+class WindowApi:
+    """暴露给前端的窗口控制（无边框窗口用）。
+
+    为什么不用 pywebview 的 easy_drag：那会让整个窗口都能拖动，
+    表格里选文字、拖画布都会误触。这里只让标题区拖动，通过 move_to 实现。
+    """
+
+    def __init__(self) -> None:
+        self._window = None
+
+    def bind(self, window) -> None:
+        self._window = window
+
+    def minimize(self) -> None:
+        if self._window is not None:
+            self._window.minimize()
+
+    def toggle_maximize(self) -> None:
+        if self._window is None:
+            return
+        try:
+            if self._window.maximized:
+                self._window.restore()
+            else:
+                self._window.maximize()
+        except Exception as exc:  # noqa: BLE001
+            log(f"最大化切换失败：{exc}")
+
+    def move_to(self, x: int, y: int) -> None:
+        if self._window is not None:
+            try:
+                self._window.move(int(x), int(y))
+            except Exception as exc:  # noqa: BLE001
+                log(f"移动窗口失败：{exc}")
+
+    def close(self) -> None:
+        if self._window is not None:
+            self._window.destroy()
+
 def open_window(
     port: int,
     selftest: int | None,
@@ -376,6 +416,7 @@ def open_window(
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     url = f"http://127.0.0.1:{port}/"
+    window_api = WindowApi()
     window = webview.create_window(
         WINDOW_TITLE,
         url=url if preparer is None else None,
@@ -385,7 +426,12 @@ def open_window(
         min_size=(1120, 720),
         background_color="#EAE5E1",
         text_select=True,
+        frameless=True,       # 去掉系统标题栏，改用界面自己的标题区
+        easy_drag=False,      # 不让整窗可拖，避免干扰选文字/拖画布
+        js_api=window_api,
     )
+
+    window_api.bind(window)
 
     def worker() -> None:
         """后台线程：起后端 → 等就绪 → 把窗口切到真实界面。"""

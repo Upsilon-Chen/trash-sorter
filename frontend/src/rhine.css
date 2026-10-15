@@ -1442,3 +1442,44 @@ body::after {
     transform: none !important;
   }
 }
+/* ------------------------------------------------ 无边框窗口的自绘控制按钮 */
+
+.win-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+}
+
+.win-ctl button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--hud-line);
+  border-radius: 9px;
+  background: var(--hud-sunken);
+  color: var(--hud-ink-2);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background var(--t-mid) var(--ease-soft), color var(--t-mid) var(--ease-soft),
+    border-color var(--t-mid) var(--ease-soft);
+}
+
+.win-ctl button:hover {
+  background: var(--hud-accent-soft);
+  border-color: color-mix(in srgb, var(--hud-accent) 32%, transparent);
+  color: var(--hud-accent-2);
+}
+
+.win-ctl button.is-close:hover {
+  background: color-mix(in srgb, var(--hud-danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--hud-danger) 40%, transparent);
+  color: var(--hud-danger);
+}
+
+/* 标题区可拖动 */
+.brand-mark {
+  cursor: default;
+}

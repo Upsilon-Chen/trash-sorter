@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ENTRY = ROOT / "tools" / "app_launcher.py"
 DESKTOP = ROOT / "tools" / "desktop.py"
 ICON = ROOT / "assets" / "app.ico"
+SPLASH = ROOT / "assets" / "splash.png"
 WORK = ROOT / "build" / "pyinstaller"
 DIST = ROOT / "dist-exe"
 BUILD_NAME = "TrashSorterApp"
@@ -61,6 +62,9 @@ def main() -> int:
         BUILD_NAME,
         "--icon",
         str(ICON),
+        # 启动画面：由 PyInstaller 引导进程最先显示，双击立刻有反馈
+        "--splash",
+        str(SPLASH),
         # 把 desktop.py 也打进去：挪到别处也能跑（找不到仓库副本时用它）
         "--add-data",
         f"{DESKTOP}{os.pathsep}tools",
