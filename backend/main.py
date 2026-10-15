@@ -35,6 +35,7 @@ import json
 import logging
 import os
 import re
+import socket
 import sys
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -54,6 +55,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
@@ -101,6 +103,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "host": "0.0.0.0",
         "port": 8000,
         "cors_origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+        "claim_ttl_seconds": 120,
     },
     "camera": {
         "scan_max_index": 10,
@@ -414,7 +417,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         emit=services.bus.emit,
     )
     services.camera.set_overlay_provider(services.pipeline.get_overlay)
-    services.annotator = Annotator(CAPTURE_BASE, ANNOTATE_CLASSES_YAML, services.pipeline.class_table())
+    services.annotator = Annotator(
+        CAPTURE_BASE,
+        ANNOTATE_CLASSES_YAML,
+        services.pipeline.class_table(),
+        claim_ttl_seconds=float((settings.get("app") or {}).get("claim_ttl_seconds") or 120.0),
+    )
     app.state.services = services
 
     services.pump_task = asyncio.create_task(services.bus.pump(services.manager), name="ws-pump")
@@ -567,6 +575,13 @@ class AnnotateSaveRequest(BaseModel):
 class AnnotateBuildRequest(BaseModel):
     val_ratio: float = Field(default=0.2, ge=0.0, le=0.5, description="验证集比例")
     include_background: bool = Field(default=True, description="background 目录里没标注的图当背景样本")
+
+
+class ClaimRequest(BaseModel):
+    """认领/释放一张图片，避免两个标注员同时标同一张。"""
+
+    name: str = Field(min_length=1, max_length=255, description="类别/文件名")
+    client_id: str = Field(min_length=1, max_length=64, description="浏览器标签页的随机 ID")
 
 
 class ReferenceRequest(BaseModel):
@@ -1006,6 +1021,37 @@ async def annotate_delete_image(request: Request, name: str = Query(..., min_len
     return {"ok": True, **result}
 
 
+@app.post("/api/annotate/claim")
+async def annotate_claim(payload: ClaimRequest, request: Request) -> dict[str, Any]:
+    """认领一张图片（打开前调用）。被另一位标注员占用时返回 ok=false。
+
+    目的是让两个人在同一份数据上协作时不会同时标同一张、
+    避免后保存的覆盖先保存的。
+    """
+    services = services_of(request)
+    try:
+        result = await asyncio.to_thread(services.annotator.claim_image, payload.name, payload.client_id)
+    except AnnotateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {**result, "ttl": services.annotator.claim_ttl}
+
+
+@app.post("/api/annotate/release")
+async def annotate_release(payload: ClaimRequest, request: Request) -> dict[str, Any]:
+    """释放认领（切图 / 离开页面时调用）。"""
+    services = services_of(request)
+    result = await asyncio.to_thread(services.annotator.release_image, payload.name, payload.client_id)
+    return {"ok": True, **result}
+
+
+@app.get("/api/annotate/claims")
+async def annotate_claims(request: Request) -> dict[str, Any]:
+    """当前所有图片的占用情况：{图片名: client_id}。"""
+    services = services_of(request)
+    claims = await asyncio.to_thread(services.annotator.claims)
+    return {"ok": True, "claims": claims, "count": len(claims), "ttl": services.annotator.claim_ttl}
+
+
 @app.post("/api/annotate/build")
 async def annotate_build(payload: AnnotateBuildRequest, request: Request) -> dict[str, Any]:
     """把已标注的抓拍图导出成 YOLO 数据集 + data.yaml。"""
@@ -1280,6 +1326,63 @@ async def pipeline_error_handler(request: Request, exc: PipelineError) -> JSONRe
 
 
 # ---------------------------------------------------------------------------
+# 局域网协作：把地址告诉大家 + 托管前端构建产物
+#
+# 典型用法（一台电脑抓拍、另一台电脑标注）：
+#   A 机：python -m backend.main          → 打开 http://<A的局域网IP>:8000 就能用
+#   B 机：浏览器直接打开同一个地址即可，**不用装 Python / Node，也不用配 CORS**
+# 前提是 A 机已经构建过一次前端：cd frontend && npm run build
+# ---------------------------------------------------------------------------
+def local_ipv4_addresses() -> list[str]:
+    """本机可能被局域网访问的 IPv4 地址（用于告诉同事访问哪个网址）。"""
+    found: list[str] = []
+    try:
+        # 不真的发包，只借路由表选出"对外那张网卡"的地址
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.connect(("8.8.8.8", 80))
+        found.append(str(probe.getsockname()[0]))
+        probe.close()
+    except OSError:  # pragma: no cover - 没有默认路由
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            address = str(info[4][0])
+            if address not in found and not address.startswith("127."):
+                found.append(address)
+    except OSError:  # pragma: no cover
+        pass
+    return found
+
+
+def network_info() -> dict[str, Any]:
+    settings = load_settings()
+    host = str(settings["app"].get("host", "0.0.0.0"))
+    port = int(settings["app"].get("port", 8000))
+    urls = [f"http://{address}:{port}" for address in local_ipv4_addresses()]
+    return {
+        "ok": True,
+        "host": host,
+        "port": port,
+        "urls": urls,
+        "frontend_served": FRONTEND_DIST_READY,
+        "claim_ttl_seconds": float(settings["app"].get("claim_ttl_seconds") or 120.0),
+    }
+
+
+@app.get("/api/network")
+async def get_network() -> dict[str, Any]:
+    """返回局域网访问地址，方便把网址发给另一台电脑。"""
+    return await asyncio.to_thread(network_info)
+
+
+FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
+FRONTEND_DIST_READY = (FRONTEND_DIST / "index.html").is_file()
+if FRONTEND_DIST_READY:
+    # 挂在最后：/api/** 与 /ws 都已在前面的路由里注册，静态资源不会把它们盖掉
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+
+
+# ---------------------------------------------------------------------------
 # 直接运行
 # ---------------------------------------------------------------------------
 def main() -> None:
@@ -1289,7 +1392,28 @@ def main() -> None:
     settings = load_settings()
     host = str(settings["app"].get("host", "0.0.0.0"))
     port = int(settings["app"].get("port", 8000))
-    LOGGER.info("启动 uvicorn: http://%s:%d", host, port)
+
+    # 注意：这几行必须用 print —— 日志是在 lifespan 里才 basicConfig 的，
+    # 用 LOGGER 打的话（INFO 级）会被直接丢掉，用户根本看不到。
+    print("=" * 68)
+    print("YOLO 垃圾自动识别分类系统 —— 后端")
+    print("=" * 68)
+    print(f"  本机访问   : http://127.0.0.1:{port}")
+    if FRONTEND_DIST_READY:
+        urls = network_info()["urls"]
+        for index, url in enumerate(urls):
+            suffix = "   <- 发给另一位标注员（推荐）" if index == 0 else ""
+            print(f"  局域网访问 : {url}{suffix}")
+        if len(urls) > 1:
+            print("                （多出来的通常是虚拟机/虚拟网卡，选能 ping 通的那条）")
+        print("  说明       : 前端已由后端托管，另一台电脑直接打开上面的网址即可，")
+        print("               不用装 Python / Node，也不用配 CORS。")
+        print(f"  打不开的话 : Windows 防火墙放行入站 {port} 端口")
+    else:
+        print("  提示       : 未找到前端构建产物，另一台电脑暂时只能用 npm run dev 访问。")
+        print("               想直接开网址：cd frontend && npm run build")
+    print("=" * 68)
+
     uvicorn.run(app, host=host, port=port, log_level=os.environ.get("TRASH_SORTER_LOG_LEVEL", "info").lower())
 
 

@@ -514,6 +514,8 @@ export interface AnnotateImageItem {
   category: string;
   labeled: boolean;
   boxes: number;
+  /** 被哪个客户端认领着（null/undefined = 没人占）；用于多人协作时避免撞车 */
+  claimed_by?: string | null;
 }
 
 /** 归一化坐标（0~1），左上角 + 右下角 */
@@ -583,6 +585,52 @@ export function deleteAnnotateImage(name: string): Promise<AnnotateDeleteRespons
   return request<AnnotateDeleteResponse>(`/api/annotate/image?name=${encodeURIComponent(name)}`, {
     method: 'DELETE',
   });
+}
+
+/* ------------------------------------------- 多人协作：图片认领 + 共享地址 */
+
+export interface ClaimResponse {
+  ok: boolean;
+  name: string;
+  /** 当前持有者的 client_id（ok=false 时是别人） */
+  holder: string;
+  /** 该认领还有多少秒过期 */
+  expires_in: number;
+  /** 服务端的认领有效期 */
+  ttl?: number;
+}
+
+/** 认领一张图（打开前调用）；被另一个人占用时 ok=false */
+export function claimAnnotateImage(name: string, clientId: string): Promise<ClaimResponse> {
+  return request<ClaimResponse>('/api/annotate/claim', {
+    method: 'POST',
+    body: JSON.stringify({ name, client_id: clientId }),
+  });
+}
+
+export function releaseAnnotateImage(
+  name: string,
+  clientId: string,
+): Promise<{ ok: boolean; name: string; released: boolean }> {
+  return request<{ ok: boolean; name: string; released: boolean }>('/api/annotate/release', {
+    method: 'POST',
+    body: JSON.stringify({ name, client_id: clientId }),
+  });
+}
+
+export interface NetworkInfo {
+  ok: boolean;
+  host: string;
+  port: number;
+  /** 局域网里其他人可以打开的地址（第一个是主网卡，推荐） */
+  urls: string[];
+  /** 后端是否已在托管前端构建产物（true 时别人直接开网址就能用） */
+  frontend_served: boolean;
+  claim_ttl_seconds: number;
+}
+
+export function getNetworkInfo(): Promise<NetworkInfo> {
+  return request<NetworkInfo>('/api/network');
 }
 
 export interface BuildDatasetResult {

@@ -15,6 +15,7 @@ import ResultPanel from './components/ResultPanel';
 import SerialPanel, { type SerialLogEntry } from './components/SerialPanel';
 import {
   errorText,
+  getNetworkInfo,
   requestState,
   startDetection,
   stopDetection,
@@ -25,6 +26,7 @@ import {
   type DetectionSnapshot,
   type IncomingEvent,
   type ModelState,
+  type NetworkInfo,
   type SerialState,
   type SocketStatus,
   type SortEventData,
@@ -40,6 +42,14 @@ export default function App() {
   const { message } = AntApp.useApp();
 
   const [page, setPage] = useState<PageKey>('dashboard');
+  // 局域网共享地址（给另一台电脑的标注员用）
+  const [network, setNetwork] = useState<NetworkInfo | null>(null);
+
+  useEffect(() => {
+    getNetworkInfo()
+      .then(setNetwork)
+      .catch(() => undefined);
+  }, []);
   const [wsStatus, setWsStatus] = useState<SocketStatus>(trashSocket.getStatus());
   const [snapshot, setSnapshot] = useState<DetectionSnapshot | null>(null);
   const [cameraState, setCameraState] = useState<CameraState | null>(null);
@@ -199,6 +209,47 @@ export default function App() {
             <Tag color={serialState?.connected ? 'cyan' : 'default'}>
               {serialState?.connected ? `串口 ${serialState.connection?.port}` : '串口未连接'}
             </Tag>
+            {network?.frontend_served && network.urls.length > 0 && (
+              <Tooltip
+                title={
+                  <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+                    局域网里另一台电脑（标注员）<b>直接打开这个地址</b>就能用，
+                    不用装 Python / Node：
+                    <div className="mono" style={{ marginTop: 2 }}>{network.urls[0]}</div>
+                    {network.urls.length > 1 && (
+                      <div style={{ marginTop: 4, opacity: 0.85 }}>
+                        其它网卡：{network.urls.slice(1).join('　')}
+                      </div>
+                    )}
+                    <div style={{ marginTop: 4 }}>点一下标签可复制</div>
+                  </div>
+                }
+              >
+                <Tag
+                  color="purple"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    const url = network.urls[0];
+                    if (navigator.clipboard?.writeText) {
+                      navigator.clipboard.writeText(url).then(
+                        () => message.success(`已复制共享地址：${url}`),
+                        () => message.info(`共享地址：${url}`),
+                      );
+                    } else {
+                      // http 非安全上下文没有 clipboard API，只能提示手动输入
+                      message.info(`共享地址：${url}`);
+                    }
+                  }}
+                >
+                  共享 {network.urls[0].replace(/^https?:\/\//, '')}
+                </Tag>
+              </Tooltip>
+            )}
+            {network && !network.frontend_served && (
+              <Tooltip title="想让另一台电脑直接打开网址就能标注：先在 frontend 目录执行 npm run build，然后重启后端">
+                <Tag>共享：待构建前端</Tag>
+              </Tooltip>
+            )}
             <Button size="small" icon={<SyncOutlined />} onClick={() => requestState()}>
               同步状态
             </Button>

@@ -14,6 +14,7 @@ import logging
 import os
 import random
 import shutil
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +49,79 @@ COVERAGE_LIMIT = 0.6
 
 class AnnotateError(RuntimeError):
     """标注相关的参数/状态错误。"""
+
+
+class ClaimRegistry:
+    """内存里的"图片占用表"：防止两位标注员同时标同一张图。
+
+    两个人在同一份数据上协作时，最容易出的事就是同时点开同一张、
+    各自画一半、后保存的把先保存的覆盖掉。这里用"认领 + 自动过期"解决：
+
+      - 打开一张图先认领；被别人认领且没过期时，前端会提示并拒绝打开
+      - 认领有过期时间（默认 120s），前端每 45s 续一次；
+        浏览器直接关掉/断网时靠过期自动释放，不会把图永久锁死
+      - 只存内存、不落盘：后端重启即全部释放（协作场景下这是想要的行为）
+
+    这里不记录"是谁标的"（不需要溯源），client_id 只用于区分浏览器标签页。
+    """
+
+    def __init__(self, ttl_seconds: float = 120.0) -> None:
+        self._lock = threading.Lock()
+        self._ttl = max(10.0, float(ttl_seconds))
+        self._claims: dict[str, dict[str, Any]] = {}
+
+    @property
+    def ttl(self) -> float:
+        return self._ttl
+
+    def _purge(self, now: float) -> None:
+        for name in [k for k, v in self._claims.items() if v["expires_at"] <= now]:
+            self._claims.pop(name, None)
+
+    def claim(self, name: str, client_id: str) -> dict[str, Any]:
+        """尝试认领；被别人占着（且未过期）时返回 ok=False。"""
+        now = time.time()
+        with self._lock:
+            self._purge(now)
+            holder = self._claims.get(name)
+            if holder is not None and holder["client_id"] != client_id:
+                return {
+                    "ok": False,
+                    "name": name,
+                    "holder": holder["client_id"],
+                    "expires_in": round(max(0.0, holder["expires_at"] - now), 1),
+                }
+            self._claims[name] = {"client_id": str(client_id), "expires_at": now + self._ttl}
+            return {"ok": True, "name": name, "holder": str(client_id), "expires_in": self._ttl}
+
+    def release(self, name: str, client_id: str) -> bool:
+        """主动释放；只有持有者能释放。"""
+        with self._lock:
+            holder = self._claims.get(name)
+            if holder is None or holder["client_id"] != client_id:
+                return False
+            self._claims.pop(name, None)
+            return True
+
+    def release_all(self, client_id: str) -> int:
+        """释放某个客户端持有的全部图片。"""
+        with self._lock:
+            names = [name for name, item in self._claims.items() if item["client_id"] == client_id]
+            for name in names:
+                self._claims.pop(name, None)
+            return len(names)
+
+    def snapshot(self) -> dict[str, str]:
+        """当前占用情况：{图片名: client_id}（顺手清掉已过期的）。"""
+        now = time.time()
+        with self._lock:
+            self._purge(now)
+            return {name: item["client_id"] for name, item in self._claims.items()}
+
+    def forget(self, name: str) -> None:
+        """图片被删除时调用。"""
+        with self._lock:
+            self._claims.pop(name, None)
 
 
 @dataclass(slots=True)
@@ -106,10 +180,42 @@ def _link_or_copy(source: Path, target: Path) -> None:
 class Annotator:
     """抓拍图片的标注管理 + 数据集导出。"""
 
-    def __init__(self, capture_base: Path, classes_yaml: Path, class_table: Optional[dict[str, Any]] = None):
+    def __init__(
+        self,
+        capture_base: Path,
+        classes_yaml: Path,
+        class_table: Optional[dict[str, Any]] = None,
+        claim_ttl_seconds: float = 120.0,
+    ):
         self._base = Path(capture_base)
         self._yaml = Path(classes_yaml)
         self._class_table = class_table or {}
+        # 多人协作时的图片占用表（见 ClaimRegistry）
+        self._claims = ClaimRegistry(claim_ttl_seconds)
+
+    # ------------------------------------------------------------ 认领
+    @property
+    def claim_ttl(self) -> float:
+        return self._claims.ttl
+
+    def claim_image(self, name: str, client_id: str) -> dict[str, Any]:
+        """认领一张图（打开前调用）；被他人占用时返回 ok=False。"""
+        image = self.resolve_image(name)
+        rel = image.relative_to(self._base).as_posix()
+        return self._claims.claim(rel, client_id)
+
+    def release_image(self, name: str, client_id: str) -> dict[str, Any]:
+        """释放认领（切图/离开时调用）。"""
+        raw = str(name or "").replace("\\", "/")
+        released = self._claims.release(raw, client_id)
+        return {"name": raw, "released": released}
+
+    def release_client(self, client_id: str) -> int:
+        """释放某个客户端的全部认领。"""
+        return self._claims.release_all(client_id)
+
+    def claims(self) -> dict[str, str]:
+        return self._claims.snapshot()
 
     # ------------------------------------------------------------ 类别口径
     def names(self) -> dict[int, str]:
@@ -193,6 +299,7 @@ class Annotator:
             label.unlink()
             removed_label = True
         image.unlink()
+        self._claims.forget(raw)  # 图片没了，占用记录也一起清掉
         _LOGGER.info("已删除抓拍图 %s（标签%s）", raw, "一并删除" if removed_label else "本来就没有")
         return {"name": raw, "removed_label": removed_label, "remaining": len(self.list_images())}
 
@@ -207,10 +314,11 @@ class Annotator:
 
     # ------------------------------------------------------------ 图片列表
     def list_images(self) -> list[dict[str, Any]]:
-        """列出所有抓拍图片及其标注状态。"""
+        """列出所有抓拍图片及其标注状态（含当前的认领情况）。"""
         items: list[dict[str, Any]] = []
         if not self._base.is_dir():
             return items
+        claims = self._claims.snapshot()
         for category_dir in sorted(self._base.iterdir()):
             if not category_dir.is_dir() or category_dir.name.startswith(REFERENCE_PREFIX):
                 continue
@@ -220,12 +328,15 @@ class Annotator:
                 if path.name.startswith(REFERENCE_PREFIX):  # 参考图之类的辅助文件不算样本
                     continue
                 boxes = self._count_boxes(self.label_path(path))
+                rel = path.relative_to(self._base).as_posix()
                 items.append(
                     {
-                        "name": path.relative_to(self._base).as_posix(),
+                        "name": rel,
                         "category": category_dir.name,
                         "labeled": boxes > 0,
                         "boxes": boxes,
+                        # 被谁认领着（None = 没人占）；前端据此显示"标注中"并跳过
+                        "claimed_by": claims.get(rel),
                     }
                 )
         return items

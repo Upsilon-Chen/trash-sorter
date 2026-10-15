@@ -284,6 +284,16 @@ body {
   background: #e8f8f0;
 }
 
+/* 被另一位标注员占用：变灰 + 名字加删除线，一眼看出不能点 */
+.annotate-item.claimed {
+  opacity: 0.55;
+  background: #f5f7fa;
+}
+
+.annotate-item.claimed .annotate-name {
+  text-decoration: line-through;
+}
+
 .annotate-name {
   max-width: 148px;
   font-size: 12px;

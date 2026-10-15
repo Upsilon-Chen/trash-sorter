@@ -21,6 +21,7 @@
 - [硬件清单](#硬件清单)
 - [快速开始](#快速开始)
 - [使用流程](#使用流程)
+- [两台电脑协同（一人抓拍、一人标注）](#两台电脑协同一人抓拍一人标注)
 - [串口协议](#串口协议)
 - [配置说明](#配置说明)
 - [后端接口](#后端接口)
@@ -42,6 +43,8 @@
 - **多目标决策策略**：一帧里出现多个不同类别的垃圾时，可选 优先级 / 最大件 / 置信度 / 暂停
 - **自愈看门狗**：摄像头抓帧线程、检测线程、事件泵任一挂掉都会自动重启
 - 内置**数据标注服务**与**背景差分自动标注**，可直接从网页生成 YOLO 数据集
+- **局域网协同**：后端可直接托管前端，另一台电脑打开一个网址即可标注（无需装环境）；
+  带**图片认领**机制，两人并行标注不会互相覆盖
 
 **前端**（React + Vite + TypeScript + Ant Design）
 
@@ -241,6 +244,73 @@ pio device monitor      # 串口监视（115200）
 
 ---
 
+## 两台电脑协同（一人抓拍、一人标注）
+
+一个人守着设备抓拍、另一个人在另一台电脑上标注，**不需要同步数据、不需要装任何东西在 B 机上**：
+B 直接用浏览器打开 A 的地址，看到的就是同一份图片库，标注结果直接写在 A 的磁盘上（训练机）。
+
+```
+PC-A（相机 + 托盘 + ESP32 + 后端 + 训练）        PC-B（只需一个浏览器）
+  python -m backend.main                         打开 http://<A的局域网IP>:8000
+  training/captures/  ◄── 标注结果直接落盘 ────   同一套界面，协同标注
+```
+
+### 一次性准备（在 A 机上）
+
+```bash
+cd frontend
+npm run build          # 构建一次，之后 A/B 都直接开网址，不用再跑 npm run dev
+```
+
+### 每台机器的操作
+
+| | 操作 |
+| --- | --- |
+| **A 机** | `python -m backend.main` —— 启动横幅会直接打印局域网地址，例如 `http://172.16.17.120:8000   <- 发给另一位标注员（推荐）` |
+| **A 机** | 首次需要放行防火墙：控制面板 → Windows Defender 防火墙 → 允许应用通过防火墙（或 `New-NetFirewallRule -DisplayName "trash-sorter" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow`，需管理员） |
+| **B 机** | 浏览器打开上面那个地址即可。**不用装 Python、Node，也不用配 CORS**（同源访问） |
+
+界面右上角有一个紫色「**共享 x.x.x.x:8000**」标签，点一下即可复制地址发给同事；
+悬停能看到全部网卡（虚拟机的网卡也在里面，选能 ping 通的那条）。
+
+B 机上的「摄像头画面」看到的就是 **A 的摄像头**，所以 B 也可以远程点「抓拍」——
+于是流程可以是：**A 摆件 → B 看着实时画面抓拍 + 立刻标注**。
+
+### 两个人不会撞车：图片认领
+
+两个人共用同一份待标注列表时，最容易发生"同时点开同一张、各自画一半、后保存的覆盖先保存的"。
+系统用**认领（claim）+ 自动过期**解决：
+
+- 打开一张图会**先认领**；被别人占用时会提示"正在被另一位标注员处理（约 N 秒后自动释放）"并拒绝打开
+- 列表里被占用的那行会**变灰、名字加删除线、显示蓝色「标注中」标签**
+- 「保存并下一张」会**跳过**被别人占用的图
+- 打开期间每 45 秒自动续租；浏览器直接关掉/断网时，靠 `app.claim_ttl_seconds`（默认 120 秒）自动释放，不会把图永久锁死
+- 切图、离开标注页、关页面时都会尽量释放
+
+> 认领只存在后端内存里，**重启后端即全部释放**；也不记录"是谁标的"，只区分浏览器标签页。
+> 同一个浏览器开两个标签页会被当成两个人，方便自己一个人测协作流程。
+
+### 如果 B 想跑开发模式（可选）
+
+B 机上也可以 `npm run dev`，只要在 `frontend/.env.local` 里指向 A：
+
+```bash
+VITE_API_BASE=http://172.16.17.120:8000
+VITE_WS_URL=ws://172.16.17.120:8000/ws
+```
+
+（这种方式浏览器是从 B 自己的 `127.0.0.1:5173` 发起请求，正好在默认 CORS 白名单里；
+若用局域网 IP 打开 dev server，需要把该来源加进 `app.cors_origins`。）
+
+### 注意
+
+- **A 机必须开着**：B 只是"带屏幕的标注终端"，A 关机 B 就没法标
+- 两台机器需要在**同一局域网**（同一路由器 / 同一 WiFi）；跨网络请用 Tailscale 之类的私有网络
+- 系统**没有登录鉴权**，不要直接把 8000 端口暴露到公网（否则任何人都能看摄像头、点抓拍、手动下发舵机指令）
+- 数据集构建与训练仍然在 **A 机**上做（图片和标签都在它那儿）
+
+---
+
 ## 串口协议
 
 PC → ESP32（一行一个 JSON，`\n` 结尾）：
@@ -278,7 +348,8 @@ ESP32 → PC：
 | 配置项 | 默认 | 说明 |
 | --- | --- | --- |
 | `app.host` / `app.port` | `0.0.0.0` / `8000` | 后端监听地址 |
-| `app.cors_origins` | 5173 / 4173 | 允许的前端来源 |
+| `app.cors_origins` | 5173 / 4173 | 允许的前端来源（后端托管前端时同源访问，不走 CORS） |
+| `app.claim_ttl_seconds` | `120` | 多人协作时"图片认领"的有效期（秒），超时自动释放 |
 | `camera.autostart_index` | `0` | 启动时自动打开的摄像头序号，`null` = 不自动打开 |
 | `camera.backend` | `auto` | `dshow` / `msmf` / `v4l2` / `any` |
 | `camera.stale_frame_seconds` | `6.0` | 超过该秒数没新帧就判定摄像头失效并自动重开 |
@@ -326,6 +397,7 @@ ESP32 → PC：
 | 手动分拣 | `POST /api/sort/manual` |
 | 抓拍 | `POST /api/capture`、`GET /api/captures` |
 | 标注 | `GET /api/annotate/images`、`GET /api/annotate/image`、`GET\|POST /api/annotate/labels`、`DELETE /api/annotate/image` |
+| 协作 | `POST /api/annotate/claim`、`POST /api/annotate/release`、`GET /api/annotate/claims`、`GET /api/network` |
 | 自动标注 | `GET\|POST\|DELETE /api/annotate/reference`、`GET /api/annotate/reference/image`、`POST /api/annotate/auto` |
 | 数据集 | `POST /api/annotate/build` |
 | WebSocket | `/ws`（命令：`ping` / `state` / `detection.start` / `detection.stop` / `sort.manual` / `camera.select`） |

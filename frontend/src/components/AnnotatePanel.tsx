@@ -29,9 +29,11 @@ import {
 
 import {
   annotateImageUrl,
+  API_BASE,
   autoAnnotate,
   buildAnnotateDataset,
   captureFrame,
+  claimAnnotateImage,
   clearReference,
   deleteAnnotateImage,
   errorText,
@@ -39,6 +41,7 @@ import {
   getReference,
   listAnnotateImages,
   referenceImageUrl,
+  releaseAnnotateImage,
   saveAnnotateLabels,
   setReference,
   type AnnotateBox,
@@ -155,6 +158,28 @@ export default function AnnotatePanel({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const draftRef = useRef<DraftBox | null>(null);
+  // 当前打开的图片（用 ref 是为了在异步回调 / 定时器里拿到最新值）
+  const currentRef = useRef<string | null>(null);
+
+  /**
+   * 本浏览器标签页的协作 ID：只用来区分"谁在标哪张"，不涉及账号。
+   * 放 sessionStorage —— 同一个浏览器开两个标签页会被当成两个人（方便自己测协作）。
+   */
+  const clientId = useMemo(() => {
+    const key = 'trash-sorter-client-id';
+    let value = window.sessionStorage.getItem(key);
+    if (!value) {
+      value = Math.random().toString(36).slice(2, 10);
+      window.sessionStorage.setItem(key, value);
+    }
+    return value;
+  }, []);
+
+  /** 这张图是否被"另一个人"占着 */
+  const isClaimedByOther = useCallback(
+    (item: AnnotateImageItem) => Boolean(item.claimed_by && item.claimed_by !== clientId),
+    [clientId],
+  );
 
   const colorOf = useCallback(
     (className: string) => {
@@ -204,27 +229,6 @@ export default function AnnotatePanel({
     void refresh(true);
   }, [refresh]);
 
-  const loadImage = useCallback(
-    async (name: string) => {
-      try {
-        const data = await getAnnotateLabels(name);
-        setCurrent(name);
-        setBoxes(data.boxes ?? []);
-        setSelected(null);
-        setDirty(false);
-        setImgNonce((value) => value + 1);
-        // 抓拍时按类别分了目录：新图默认就用该目录对应的类别，省一次点击
-        if ((data.boxes ?? []).length === 0) {
-          const category = name.split('/')[0];
-          if (classes.some((item) => item.name === category)) setNewClass(category);
-        }
-      } catch (error) {
-        message.error(errorText(error));
-      }
-    },
-    [classes, message],
-  );
-
   /** 静默刷新列表并返回最新数据（保存后用来找下一张未标注） */
   const refreshImages = useCallback(async (): Promise<AnnotateImageItem[]> => {
     try {
@@ -235,6 +239,82 @@ export default function AnnotatePanel({
       return [];
     }
   }, []);
+
+  const loadImage = useCallback(
+    async (name: string): Promise<boolean> => {
+      // 先认领：两个标注员同时点同一张时，后点的会被挡住
+      try {
+        const claim = await claimAnnotateImage(name, clientId);
+        if (!claim.ok) {
+          message.warning(
+            `这张图正在被另一位标注员处理（约 ${Math.round(claim.expires_in)} 秒后自动释放），先标别的吧`,
+          );
+          void refreshImages();
+          return false;
+        }
+      } catch (error) {
+        message.error(errorText(error));
+        return false;
+      }
+
+      // 换图时释放上一张
+      const previous = currentRef.current;
+      if (previous && previous !== name) {
+        void releaseAnnotateImage(previous, clientId).catch(() => undefined);
+      }
+
+      try {
+        const data = await getAnnotateLabels(name);
+        currentRef.current = name;
+        setCurrent(name);
+        setBoxes(data.boxes ?? []);
+        setSelected(null);
+        setDirty(false);
+        setImgNonce((value) => value + 1);
+        // 抓拍时按类别分了目录：新图默认就用该目录对应的类别，省一次点击
+        if ((data.boxes ?? []).length === 0) {
+          const category = name.split('/')[0];
+          if (classes.some((item) => item.name === category)) setNewClass(category);
+        }
+        return true;
+      } catch (error) {
+        message.error(errorText(error));
+        return false;
+      }
+    },
+    [classes, clientId, message, refreshImages],
+  );
+
+  // 打开期间定期续租，浏览器异常关闭时靠服务端 TTL 自动释放
+  useEffect(() => {
+    if (!current) return;
+    const timer = window.setInterval(() => {
+      void claimAnnotateImage(current, clientId).catch(() => undefined);
+    }, 45000);
+    return () => window.clearInterval(timer);
+  }, [clientId, current]);
+
+  // 离开标注页 / 关闭页面时尽量释放认领（同源时 sendBeacon 能发出去；失败也有 TTL 兜底）
+  useEffect(() => {
+    const release = () => {
+      const name = currentRef.current;
+      if (!name) return;
+      currentRef.current = null;
+      try {
+        const blob = new Blob([JSON.stringify({ name, client_id: clientId })], {
+          type: 'application/json',
+        });
+        navigator.sendBeacon(`${API_BASE}/api/annotate/release`, blob);
+      } catch {
+        /* 忽略：TTL 会兜底 */
+      }
+    };
+    window.addEventListener('pagehide', release);
+    return () => {
+      window.removeEventListener('pagehide', release);
+      release();
+    };
+  }, [clientId]);
 
   const filtered = useMemo(() => {
     if (filter === 'labeled') return images.filter((item) => item.labeled);
@@ -278,18 +358,23 @@ export default function AnnotatePanel({
     [boxes, current, message, refresh],
   );
 
-  /** 保存并自动跳到下一张未标注的图 */
+  /** 保存并自动跳到下一张未标注的图（跳过被另一位标注员占用的） */
   const saveAndNext = useCallback(async () => {
     const ok = await save();
     if (!ok || !autoNext) return;
     const fresh = await refreshImages();
-    const next = fresh.find((item) => !item.labeled && item.name !== current);
+    const next = fresh.find(
+      (item) => !item.labeled && item.name !== current && !isClaimedByOther(item),
+    );
     if (next) {
+      if (current) void releaseAnnotateImage(current, clientId).catch(() => undefined);
       await loadImage(next.name);
+    } else if (fresh.some((item) => !item.labeled)) {
+      message.info('剩下的未标注图片都被另一位标注员占用了');
     } else if (fresh.length > 0) {
       message.success('所有图片都标注完了');
     }
-  }, [autoNext, current, loadImage, message, refreshImages, save]);
+  }, [autoNext, clientId, current, isClaimedByOther, loadImage, message, refreshImages, save]);
 
   const goto = useCallback(
     async (offset: number) => {
@@ -771,8 +856,14 @@ export default function AnnotatePanel({
                 dataSource={filtered}
                 renderItem={(item, itemIndex) => (
                   <List.Item
-                    className={`annotate-item${item.name === current ? ' active' : ''}`}
+                    className={`annotate-item${item.name === current ? ' active' : ''}${
+                      isClaimedByOther(item) ? ' claimed' : ''
+                    }`}
                     onClick={() => {
+                      if (isClaimedByOther(item)) {
+                        message.warning('这张图正在被另一位标注员处理，先标别的吧');
+                        return;
+                      }
                       if (dirty && current) void save(true);
                       void loadImage(item.name);
                     }}
@@ -782,6 +873,11 @@ export default function AnnotatePanel({
                         {itemIndex + 1}. {item.name.split('/').pop()}
                       </span>
                       <Space size={2}>
+                        {isClaimedByOther(item) && (
+                          <Tooltip title="另一位标注员正在处理这张图">
+                            <Tag color="blue">标注中</Tag>
+                          </Tooltip>
+                        )}
                         {item.labeled ? <Tag color="green">{item.boxes} 框</Tag> : <Tag>未标注</Tag>}
                         <Tooltip title="删除这张图片及其标注（不可恢复）">
                           <Button
