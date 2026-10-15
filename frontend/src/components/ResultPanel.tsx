@@ -284,6 +284,12 @@ export default function ResultPanel({ detection, snapshot, confidence, history }
       )}
 
       <div className="result-hero">
+        {best && (
+          <span
+            className="hero-ripple"
+            key={`${best.class_name}-${best.bbox.join('-')}-${best.confidence}`}
+          />
+        )}
         <div className="result-main">
           {best ? (
             <>

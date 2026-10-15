@@ -10,6 +10,7 @@ import {
   SyncOutlined,
 } from '@ant-design/icons';
 
+import Ambient from './components/Ambient';
 import AnnotatePanel from './components/AnnotatePanel';
 import CameraPanel from './components/CameraPanel';
 import ModelPanel from './components/ModelPanel';
@@ -195,6 +196,7 @@ export default function App() {
 
   return (
     <div className="app-shell hud">
+      <Ambient />
       <header className="app-header">
         <div className="brand-mark">
           <div className="brand-logo">♻</div>
