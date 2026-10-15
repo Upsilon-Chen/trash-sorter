@@ -13,7 +13,7 @@ import {
   Upload,
   type TableProps,
 } from 'antd';
-import { CloudUploadOutlined, ReloadOutlined, SwapOutlined } from '@ant-design/icons';
+import { CloudUploadOutlined, DeploymentUnitOutlined, ReloadOutlined, SwapOutlined } from '@ant-design/icons';
 
 import {
   ApiError,
@@ -171,7 +171,7 @@ export default function ModelPanel({
       className="panel-card"
       title={
         <Space size={8}>
-          <span className="panel-title">模型</span>
+          <span className="panel-title"><DeploymentUnitOutlined />模型</span>
           {modelState?.loaded ? (
             <Tag color="green">{modelState.current}</Tag>
           ) : (

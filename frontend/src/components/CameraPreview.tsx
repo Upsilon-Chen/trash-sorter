@@ -7,6 +7,7 @@ import {
   ReloadOutlined,
   UpOutlined,
   VideoCameraAddOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
 
 import {
@@ -118,7 +119,7 @@ export default function CameraPreview({
     <div className="camera-preview panel-card">
       <div className="section-title" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
         <Space size={8}>
-          <span className="panel-title">摄像头画面</span>
+          <span className="panel-title"><VideoCameraOutlined />摄像头画面</span>
           {opened ? (
             <Tag color="green">
               {current ? `${current.width}×${current.height} · ${current.backend}` : '已打开'}

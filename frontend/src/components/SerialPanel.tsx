@@ -282,7 +282,7 @@ export default function SerialPanel({
       className="panel-card"
       title={
         <Space size={8}>
-          <span className="panel-title">串口 / ESP32</span>
+          <span className="panel-title"><ApiOutlined />串口 / ESP32</span>
           <Badge
             status={connected ? (connection?.ready ? 'success' : 'processing') : 'default'}
             text={connected ? `${connection?.port}${connection?.ready ? ' · ready' : ''}` : '未连接'}

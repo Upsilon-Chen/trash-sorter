@@ -1,0 +1,527 @@
+/* ============================================================================
+   主题系统（在 styles.css 之后加载，同权重选择器按顺序覆盖）
+   ----------------------------------------------------------------------------
+   两套主题：
+     [data-theme='light']  精炼浅色（默认）：白卡片 + 浅灰工作区 + 环保绿点缀
+     [data-theme='dark']   深色科技仪表盘：深底 + 微描边 + 数据青色高亮
+   切换由 src/theme.tsx 写 <html data-theme>，并同步 antd 的 ConfigProvider。
+
+   约定：
+     --brand/--ink/--line/... 沿用老变量名（styles.css 里已在用），这里按主题重定义，
+       所以老规则不用改就自动跟随主题；
+     图片画布（.anno-stage/.camera-preview-stage）永远保持深色，不参与切换 ——
+       标注框、白手柄在深底上才看得清。
+   ============================================================================ */
+
+:root {
+  /* —— 品牌 —— */
+  --brand: #12b76a;
+  --brand-dark: #0b8f52;          /* 浅底上的强调文字 */
+  --brand-soft: rgba(18, 183, 106, 0.12);
+  --accent-cyan: #0e9384;
+  --accent-violet: #6941c6;
+
+  /* —— 文字（次要文字用 #667085：白底对比度约 4.8:1，满足 WCAG AA） —— */
+  --ink: #101828;
+  --ink-soft: #475467;
+  --muted: #667085;
+
+  /* —— 表面 —— */
+  --bg: #f2f5f7;
+  --card: #ffffff;
+  --card-head: linear-gradient(180deg, #ffffff 0%, #fbfdfc 100%);
+  --soft: #f8fafc;
+  --item-hover: #f2f7f5;
+  --item-active: #e8f8f0;
+  --item-muted: #f5f7fa;
+  --line: #e4e7ec;
+  --line-strong: #cfd6dd;
+  --ui-track: #eef1f4;
+  --stage: #0b1418;
+
+  /* —— 语义色 —— */
+  --hero-bg: linear-gradient(120deg, #f0fdf6 0%, #f7fbff 100%);
+  --hero-border: #d3f3e2;
+  --error-ink: #b42318;
+  --error-bg: #fef3f2;
+  --error-border: #fecdca;
+
+  /* —— 阴影 / 动效 —— */
+  --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 6px 20px rgba(16, 24, 40, 0.06);
+  --card-shadow-hover: 0 2px 6px rgba(16, 24, 40, 0.08), 0 14px 32px rgba(16, 24, 40, 0.12);
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+[data-theme='dark'] {
+  --brand: #2fd67f;
+  --brand-dark: #5ce6a4;
+  --brand-soft: rgba(47, 214, 127, 0.14);
+  --accent-cyan: #22d3ee;
+  --accent-violet: #a78bfa;
+
+  --ink: #e6edf3;
+  --ink-soft: #a9b6c2;
+  --muted: #8b9aa8;
+
+  --bg: #0b1418;
+  --card: #151f26;
+  --card-head: linear-gradient(180deg, #18242c 0%, #151f26 100%);
+  --soft: #1b262e;
+  --item-hover: #1f2c35;
+  --item-active: #14342a;
+  --item-muted: #1a232a;
+  --line: #26313a;
+  --line-strong: #33414d;
+  --ui-track: #22303a;
+  --stage: #070d11;
+
+  --hero-bg: linear-gradient(120deg, #10251e 0%, #14202a 100%);
+  --hero-border: rgba(47, 214, 127, 0.28);
+  --error-ink: #fda29b;
+  --error-bg: rgba(240, 68, 56, 0.12);
+  --error-border: rgba(240, 68, 56, 0.32);
+
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px rgba(0, 0, 0, 0.42);
+  --card-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.55), 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* ------------------------------------------------- 把浅色专用表面换成语义变量 */
+
+.app-sider {
+  background: var(--card);
+  border-color: var(--line);
+}
+
+.camera-preview {
+  background: var(--card);
+}
+
+.panel-card .ant-card-head {
+  background: var(--card-head);
+}
+
+.auto-refresh-bar {
+  background: var(--soft);
+  border-color: var(--line);
+}
+
+.stat-item {
+  background: var(--soft);
+}
+
+.history-box,
+.serial-log {
+  background: var(--soft);
+}
+
+.row-active > td {
+  background: var(--brand-soft) !important;
+}
+
+.annotate-item:hover {
+  background: var(--item-hover);
+}
+
+.annotate-item.active {
+  background: var(--item-active);
+}
+
+.annotate-item.claimed {
+  background: var(--item-muted);
+}
+
+.result-hero {
+  background: var(--hero-bg);
+  border-color: var(--hero-border);
+}
+
+.error-line {
+  color: var(--error-ink);
+  background: var(--error-bg);
+  border-color: var(--error-border);
+}
+
+.camera-preview-empty {
+  color: var(--muted);
+}
+
+.app-footer {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+/* 深色下把品牌头压得更沉一点，避免和页面底色打架 */
+[data-theme='dark'] .app-header {
+  background: linear-gradient(115deg, #03160f 0%, #07432c 45%, #0b8f52 100%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='dark'] .anno-stage,
+[data-theme='dark'] .camera-preview-stage {
+  background: var(--stage);
+}
+
+/* ------------------------------------------------------------ 排版细节 */
+
+/* 数字等宽对齐：仪表盘最怕小数点对不齐 */
+.mono,
+.stat-value,
+.metric-value,
+.bar-value,
+.conf-value,
+.donut-value,
+.ant-table-cell,
+.ant-statistic-content,
+.ant-descriptions-item-content {
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-title .anticon {
+  color: var(--brand);
+  font-size: 15px;
+}
+
+.section-title .anticon {
+  color: var(--brand);
+}
+
+/* 中文行高比英文要大一点 */
+body {
+  line-height: 1.6;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------ 视觉层级：主结果区 */
+
+.result-hero {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--hero-border);
+  border-radius: 12px;
+}
+
+.result-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 12px;
+}
+
+/* 主结果左侧的品牌色竖条：整屏的视觉锚点 */
+.result-main::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 4px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--brand) 0%, var(--accent-cyan) 100%);
+}
+
+.result-label {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.result-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.result-hero .chart-side {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* ---------------------------------------------------------------- 图表 */
+
+.donut {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.donut-seg {
+  transition: stroke-dasharray 0.6s var(--ease), stroke-dashoffset 0.6s var(--ease);
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.donut-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.donut-label {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 190px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 68px 1fr 46px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.bar-label {
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-track {
+  height: 8px;
+  border-radius: 5px;
+  background: var(--ui-track);
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.6s var(--ease);
+}
+
+.bar-value {
+  text-align: right;
+  color: var(--ink-soft);
+}
+
+.sparkline {
+  width: 100%;
+}
+
+.sparkline-label {
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.conf-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 92px;
+}
+
+.conf-track {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 4px;
+  background: var(--ui-track);
+  overflow: hidden;
+}
+
+.conf-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s var(--ease);
+}
+
+.conf-value {
+  font-size: 11px;
+  color: var(--ink-soft);
+  min-width: 34px;
+  text-align: right;
+}
+
+.chart-block {
+  margin-top: 12px;
+}
+
+.chart-block-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  gap: 18px;
+  align-items: center;
+}
+
+@media (max-width: 1360px) {
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
+  .result-hero {
+    flex-direction: column;
+  }
+}
+
+/* ---------------------------------------------------------------- 指标卡 */
+
+.metric-tile {
+  flex: 1 1 0;
+  min-width: 88px;
+  padding: 8px 10px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.metric-label {
+  font-size: 11px;
+}
+
+.metric-value {
+  margin-top: 2px;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.metric-suffix {
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.metric-brand .metric-value {
+  color: var(--brand-dark);
+}
+
+.metric-warn .metric-value {
+  color: var(--error-ink);
+}
+
+/* ---------------------------------------------------------------- 动效 */
+
+/* 卡片 hover 轻微抬升：让界面"活"起来，但不喧宾夺主 */
+.panel-card,
+.camera-preview {
+  transition: box-shadow 0.25s var(--ease), transform 0.25s var(--ease),
+    border-color 0.25s var(--ease);
+}
+
+.panel-card:hover,
+.camera-preview:hover {
+  box-shadow: var(--card-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.app-sider {
+  transition: background 0.25s var(--ease), border-color 0.25s var(--ease);
+}
+
+/* 结果淡入：数值刷新时不"跳" */
+@keyframes ts-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.result-label,
+.donut-value,
+.metric-value {
+  animation: ts-fade-up 0.28s var(--ease);
+}
+
+/* 主题切换时整页过渡（只过渡颜色，避免布局抖动） */
+body,
+.app-shell,
+.app-sider,
+.panel-card,
+.ant-card,
+.ant-card-head {
+  transition: background-color 0.25s var(--ease), border-color 0.25s var(--ease),
+    color 0.2s var(--ease);
+}
+
+/* 尊重系统的"减少动态效果" */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ------------------------------------------------------------ 滚动条 */
+
+.serial-log::-webkit-scrollbar,
+.history-box::-webkit-scrollbar,
+.annotate-list::-webkit-scrollbar,
+.annotate-boxes::-webkit-scrollbar,
+.ant-table-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.serial-log::-webkit-scrollbar-thumb,
+.history-box::-webkit-scrollbar-thumb,
+.annotate-list::-webkit-scrollbar-thumb,
+.annotate-boxes::-webkit-scrollbar-thumb,
+.ant-table-body::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 4px;
+}
+
+.serial-log::-webkit-scrollbar-track,
+.history-box::-webkit-scrollbar-track,
+.annotate-list::-webkit-scrollbar-track,
+.annotate-boxes::-webkit-scrollbar-track,
+.ant-table-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* --------------------------------------------------- 主题切换按钮 */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

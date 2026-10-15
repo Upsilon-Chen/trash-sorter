@@ -4,7 +4,9 @@ import {
   CaretRightOutlined,
   DashboardOutlined,
   EditOutlined,
+  MoonOutlined,
   PauseOutlined,
+  SunOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
 
@@ -31,6 +33,7 @@ import {
   type SocketStatus,
   type SortEventData,
 } from './api';
+import { useThemeMode } from './theme';
 
 const HISTORY_LIMIT = 30;
 const LOG_LIMIT = 50;
@@ -40,6 +43,7 @@ type PageKey = 'dashboard' | 'annotate';
 
 export default function App() {
   const { message } = AntApp.useApp();
+  const { mode: themeMode, toggle: toggleTheme } = useThemeMode();
 
   const [page, setPage] = useState<PageKey>('dashboard');
   // 局域网共享地址（给另一台电脑的标注员用）
@@ -253,6 +257,22 @@ export default function App() {
             <Button size="small" icon={<SyncOutlined />} onClick={() => requestState()}>
               同步状态
             </Button>
+            <Tooltip
+              title={
+                themeMode === 'dark'
+                  ? '切到浅色主题：教室投影、打印截图更清楚'
+                  : '切到深色主题：仪表盘风格，和摄像头画面更融'
+              }
+            >
+              <Button
+                size="small"
+                className="theme-toggle"
+                icon={themeMode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+                onClick={toggleTheme}
+              >
+                {themeMode === 'dark' ? '浅色' : '深色'}
+              </Button>
+            </Tooltip>
           </Space>
 
           <Space size={8}>

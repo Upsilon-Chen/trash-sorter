@@ -15,7 +15,7 @@ import {
   Tooltip,
   type TableProps,
 } from 'antd';
-import { CheckCircleTwoTone, ClockCircleOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { AimOutlined, CheckCircleTwoTone, ClockCircleOutlined, ThunderboltOutlined } from '@ant-design/icons';
 
 import {
   errorText,
@@ -25,6 +25,8 @@ import {
   type DetectionSnapshot,
   type SortEventData,
 } from '../api';
+import { BUCKET_COLORS } from '../theme';
+import { BarList, ConfidenceBar, DonutChart, Sparkline } from './Charts';
 
 export interface ResultPanelProps {
   /** 最近一次 WS detection 推送 */
@@ -100,9 +102,53 @@ export default function ResultPanel({ detection, snapshot, confidence, history }
     return slot === undefined ? undefined : groupLabelOfSlot(slot);
   };
 
-  const groupCounts = Object.entries(snapshot?.group_counts ?? {});
-  const classCounts = Object.entries(snapshot?.counts ?? {});
   const cooldowns = Object.entries(snapshot?.cooldowns ?? {}).filter(([, remaining]) => remaining > 0);
+
+  /** 物理桶固定配色：同一个桶在环形图、条形图、置信度条里始终是同一个颜色 */
+  const bucketColor = useCallback((slot: number) => BUCKET_COLORS[slot % BUCKET_COLORS.length], []);
+
+  const bucketData = useMemo(() => {
+    const counts = snapshot?.group_counts ?? {};
+    const slots = new Set<number>([
+      ...Object.keys(snapshot?.groups ?? {}).map((key) => Number(key)),
+      ...Object.keys(counts).map((key) => Number(key)),
+    ]);
+    return [...slots]
+      .filter((slot) => Number.isFinite(slot))
+      .sort((a, b) => a - b)
+      .map((slot) => ({
+        label: groupLabelOfSlot(slot),
+        value: Number(counts[String(slot)] ?? 0),
+        color: bucketColor(slot),
+      }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucketColor, snapshot?.group_counts, snapshot?.groups]);
+
+  const classData = useMemo(
+    () =>
+      Object.entries(snapshot?.counts ?? {})
+        .map(([name, value]) => ({
+          label: labelOf(name),
+          value: Number(value),
+          color: bucketColor(slotOf(name) ?? 0),
+        }))
+        .sort((a, b) => b.value - a.value),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bucketColor, snapshot?.counts],
+  );
+
+  /** 近 10 分钟的分拣节奏（每分钟一个柱子，最后一个是当前分钟） */
+  const trend = useMemo(() => {
+    const bins = new Array<number>(10).fill(0);
+    const now = Date.now() / 1000;
+    for (const item of history) {
+      const age = now - item.ts;
+      if (age < 0 || age >= 600) continue;
+      const index = 9 - Math.floor(age / 60);
+      if (index >= 0) bins[index] += 1;
+    }
+    return bins;
+  }, [history]);
 
   const columns: TableProps<DetectionResult>['columns'] = [
     {
@@ -126,13 +172,9 @@ export default function ResultPanel({ detection, snapshot, confidence, history }
       title: '置信度',
       dataIndex: 'confidence',
       key: 'confidence',
-      width: 140,
-      render: (value: number) => (
-        <Progress
-          percent={Math.round(value * 100)}
-          size="small"
-          strokeColor={value >= 0.6 ? '#12b76a' : value >= 0.4 ? '#f79009' : '#f04438'}
-        />
+      width: 128,
+      render: (value: number, record) => (
+        <ConfidenceBar value={value} color={bucketColor(slotOf(record.class_name) ?? 0)} />
       ),
     },
     {
@@ -163,7 +205,10 @@ export default function ResultPanel({ detection, snapshot, confidence, history }
       className="panel-card"
       title={
         <Space size={8}>
-          <span className="panel-title">识别结果</span>
+          <span className="panel-title">
+            <AimOutlined />
+            识别结果
+          </span>
           <Badge status={running ? 'processing' : 'default'} text={running ? '检测中' : '已停止'} className="panel-badge" />
         </Space>
       }
@@ -300,37 +345,30 @@ export default function ResultPanel({ detection, snapshot, confidence, history }
         <span>分类统计</span>
         <span className="muted">冷却按物理桶计算</span>
       </div>
-      <div className="count-tags">
-        <span className="muted count-tag-label">物理桶</span>
-        {groupCounts.length === 0 ? (
-          <span className="muted">暂无下发</span>
-        ) : (
-          groupCounts.map(([slot, count]) => (
-            <Tag key={`g-${slot}`} color="cyan" className="count-tag">
-              {groupLabelOfSlot(slot)} × {count}
-            </Tag>
-          ))
-        )}
+      <div className="chart-block">
+        <div className="chart-block-title">
+          <span>分拣统计</span>
+          <span className="muted">环形=物理桶占比　条形=识别类别次数</span>
+        </div>
+        <div className="chart-grid">
+          <DonutChart data={bucketData} centerLabel="累计分拣" />
+          <BarList data={classData} />
+        </div>
+        <Sparkline points={trend} label="近 10 分钟分拣节奏（每分钟）" />
       </div>
-      <div className="count-tags" style={{ marginTop: 6 }}>
-        <span className="muted count-tag-label">识别类别</span>
-        {classCounts.length === 0 ? (
-          <span className="muted">暂无下发</span>
-        ) : (
-          classCounts.map(([name, count]) => (
-            <Tag key={name} color="geekblue" className="count-tag">
-              {labelOf(name)} × {count}
-            </Tag>
-          ))
-        )}
-        {cooldowns.map(([slot, remaining]) => (
-          <Tooltip key={`cd-${slot}`} title={`${groupLabelOfSlot(slot)} 冷却中，剩余 ${remaining.toFixed(1)}s`}>
-            <Tag icon={<ClockCircleOutlined />} color="orange" className="count-tag">
-              {groupLabelOfSlot(slot)} 冷却 {remaining.toFixed(1)}s
-            </Tag>
-          </Tooltip>
-        ))}
-      </div>
+
+      {cooldowns.length > 0 && (
+        <div className="count-tags" style={{ marginTop: 8 }}>
+          <span className="muted count-tag-label">冷却中</span>
+          {cooldowns.map(([slot, remaining]) => (
+            <Tooltip key={`cd-${slot}`} title={`${groupLabelOfSlot(slot)} 冷却中，剩余 ${remaining.toFixed(1)}s`}>
+              <Tag icon={<ClockCircleOutlined />} color="orange" className="count-tag">
+                {groupLabelOfSlot(slot)} {remaining.toFixed(1)}s
+              </Tag>
+            </Tooltip>
+          ))}
+        </div>
+      )}
 
       <div className="section-title">
         <span>分类下发记录</span>

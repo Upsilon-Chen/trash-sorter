@@ -20,12 +20,15 @@ import {
   CameraOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
+  EditOutlined,
   ExperimentOutlined,
+  PictureOutlined,
   EyeInvisibleOutlined,
   ReloadOutlined,
   SaveOutlined,
   StepBackwardOutlined,
   StepForwardOutlined,
+  TagsOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
 
@@ -1056,7 +1059,7 @@ export default function AnnotatePanel({
           className="panel-card"
           title={
             <Space size={8}>
-              <span className="panel-title">抓拍图片</span>
+              <span className="panel-title"><PictureOutlined />抓拍图片</span>
               <Tag color={unlabeled ? 'orange' : 'green'}>待标注 {unlabeled}</Tag>
             </Space>
           }
@@ -1227,7 +1230,7 @@ export default function AnnotatePanel({
           className="panel-card"
           title={
             <Space size={8}>
-              <span className="panel-title">标注</span>
+              <span className="panel-title"><EditOutlined />标注</span>
               {current && <span className="mono muted">{current}</span>}
               {dirty && <Tag color="orange">未保存</Tag>}
             </Space>
@@ -1326,7 +1329,7 @@ export default function AnnotatePanel({
 
       {/* ---------------------------------------------------------- 右：类别/框列表/导出 */}
       <Col xs={24} xl={6}>
-        <Card className="panel-card" title={<span className="panel-title">类别与标注框</span>}>
+        <Card className="panel-card" title={<span className="panel-title"><TagsOutlined />类别与标注框</span>}>
           <div className="section-title" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
             <span>新框使用的类别</span>
           </div>

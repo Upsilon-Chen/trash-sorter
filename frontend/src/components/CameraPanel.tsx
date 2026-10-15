@@ -8,6 +8,7 @@ import {
   ReloadOutlined,
   UpOutlined,
   VideoCameraAddOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
 
 import {
@@ -241,7 +242,7 @@ export default function CameraPanel({
       className="panel-card"
       title={
         <Space size={8}>
-          <span className="panel-title">摄像头</span>
+          <span className="panel-title"><VideoCameraOutlined />摄像头</span>
           <Badge
             status={opened ? 'success' : 'default'}
             text={opened ? `Camera ${current?.index ?? '-'}` : '未打开'}
