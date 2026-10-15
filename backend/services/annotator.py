@@ -23,6 +23,18 @@ from typing import Any, Optional
 import cv2
 import numpy as np
 
+from .augmenter import (
+    AUGMENT_SUFFIXES,
+    JPEG_QUALITY,
+    AugmentError,
+    is_augmented,
+    stable_seed,
+    suffix_of,
+    transform_boxes,
+    transform_image,
+    validate_ops,
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"})
@@ -676,6 +688,151 @@ class Annotator:
         summary = {"total": len(results), "written": written, "skipped": skipped, "failed": failed}
         _LOGGER.info("批量自动标注完成：%s", summary)
         return {"summary": summary, "results": results}
+
+    # ------------------------------------------------------------ 数据增强
+    def augment_images(
+        self,
+        ops: list[str],
+        classes: Optional[list[str]] = None,
+        names: Optional[list[str]] = None,
+        only_labeled: bool = True,
+        include_background: bool = False,
+        overwrite: bool = False,
+        limit: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """给已标注的图片生成增强副本（同目录、文件名加后缀），标注同步换算。
+
+        返回统计；`created_names` 是新建的前若干张，界面用它自动选中新图做肉眼复核。
+        """
+        ops = validate_ops(ops)
+        wanted_classes = {str(item) for item in (classes or []) if str(item)}
+        wanted_names = {str(item) for item in (names or []) if str(item)}
+
+        created = 0
+        sources = 0
+        skipped = {"unlabeled": 0, "background": 0, "existing": 0, "filtered": 0, "augmented": 0}
+        failed: list[dict[str, str]] = []
+        created_names: list[str] = []
+
+        for item in self.list_images():
+            name = item["name"]
+            category = item["category"]
+            if wanted_names and name not in wanted_names:
+                continue
+            if wanted_classes and category not in wanted_classes:
+                skipped["filtered"] += 1
+                continue
+            if category == "background" and not include_background:
+                skipped["background"] += 1
+                continue
+            if only_labeled and not item["labeled"]:
+                skipped["unlabeled"] += 1
+                continue
+            # 不对"增强产物"再增强：否则 r90_r90_r90… 会组合爆炸
+            if is_augmented(Path(name).stem):
+                skipped["augmented"] += 1
+                continue
+            if limit is not None and sources >= int(limit):
+                break
+            sources += 1
+
+            try:
+                image_path = self.resolve_image(name)
+                image = cv2.imread(str(image_path))
+                if image is None:
+                    failed.append({"name": name, "reason": "读不出图片"})
+                    continue
+                boxes = self.read_labels(name)
+            except AnnotateError as exc:
+                failed.append({"name": name, "reason": str(exc)})
+                continue
+
+            for op in ops:
+                target = image_path.with_name(f"{image_path.stem}{suffix_of(op)}{image_path.suffix}")
+                if target.exists() and not overwrite:
+                    skipped["existing"] += 1
+                    continue
+                try:
+                    new_image = transform_image(image, op, seed=stable_seed(name, op))
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    written = cv2.imwrite(
+                        str(target), new_image, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY]
+                    )
+                    if not written:
+                        raise AnnotateError("写入图片失败")
+                    target_rel = target.relative_to(self._base).as_posix()
+                    # 图片先落盘，标签再按同样的变换写过去（write_labels 会校验并归一化）
+                    self.write_labels(target_rel, transform_boxes(boxes, op))
+                except Exception as exc:  # 单张失败不影响整批
+                    failed.append({"name": f"{name} [{op}]", "reason": f"{type(exc).__name__}: {exc}"})
+                    continue
+                created += 1
+                if len(created_names) < 50:
+                    created_names.append(target_rel)
+
+        summary: dict[str, Any] = {
+            "ops": ops,
+            "sources": sources,
+            "created": created,
+            "skipped": skipped,
+            "failed": len(failed),
+            "failed_examples": failed[:8],
+            "created_names": created_names,
+            "total_images": len(self.list_images()),
+        }
+        _LOGGER.info(
+            "数据增强完成：源图 %d 张 / 新建 %d 张 / 跳过 %s / 失败 %d",
+            summary["sources"],
+            summary["created"],
+            summary["skipped"],
+            summary["failed"],
+        )
+        return summary
+
+    def delete_augmented(
+        self,
+        classes: Optional[list[str]] = None,
+        ops: Optional[list[str]] = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """删除增强产物（连同同名标签）。
+
+        只删文件名带增强后缀的图，**绝不碰原图**；`dry_run=True` 只统计不删。
+        """
+        wanted_classes = {str(item) for item in (classes or []) if str(item)}
+        suffixes = tuple(suffix_of(op) for op in validate_ops(ops)) if ops else AUGMENT_SUFFIXES
+        matched: list[str] = []
+        removed = 0
+
+        for item in self.list_images():
+            name = item["name"]
+            if wanted_classes and item["category"] not in wanted_classes:
+                continue
+            path = self._base / name
+            if not any(path.stem.endswith(suffix) for suffix in suffixes):
+                continue
+            matched.append(name)
+            if dry_run:
+                continue
+            label = self.label_path(path)
+            try:
+                if label.is_file():
+                    label.unlink()
+                path.unlink()
+                self._claims.forget(name)
+                removed += 1
+            except OSError as exc:  # pragma: no cover - 文件被占用等
+                _LOGGER.warning("删除增强图失败 %s: %s", name, exc)
+
+        result = {
+            "matched": len(matched),
+            "removed": removed,
+            "dry_run": dry_run,
+            "suffixes": list(suffixes),
+            "examples": matched[:8],
+        }
+        _LOGGER.info("清理增强图：匹配 %d / 实际删除 %d（dry_run=%s）", len(matched), removed, dry_run)
+        return result
 
     # ------------------------------------------------------- 导出训练集
     def build_dataset(

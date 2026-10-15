@@ -66,12 +66,14 @@ from pydantic import BaseModel, Field
 if __package__ in (None, ""):  # pragma: no cover - 直接运行脚本
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from backend.services.annotator import AnnotateError, Annotator
+    from backend.services.augmenter import AugmentError, op_specs
     from backend.services.camera import MJPEG_BOUNDARY, CameraError, CameraService
     from backend.services.detector import DetectorError, DetectorService
     from backend.services.pipeline import Pipeline, PipelineError
     from backend.services.serial_esp32 import SerialError, SerialService
 else:
     from .services.annotator import AnnotateError, Annotator
+    from .services.augmenter import AugmentError, op_specs
     from .services.camera import MJPEG_BOUNDARY, CameraError, CameraService
     from .services.detector import DetectorError, DetectorService
     from .services.pipeline import Pipeline, PipelineError
@@ -584,6 +586,26 @@ class ClaimRequest(BaseModel):
     client_id: str = Field(min_length=1, max_length=64, description="浏览器标签页的随机 ID")
 
 
+class AugmentRequest(BaseModel):
+    """对已标注图片做增强（旋转/翻转/明暗/噪点），标注同步变换。"""
+
+    ops: list[str] = Field(min_length=1, description="增强方式列表，见 GET /api/augment/ops")
+    classes: Optional[list[str]] = Field(default=None, description="只处理这些类别目录；不传=全部")
+    names: Optional[list[str]] = Field(default=None, description="只处理这几张图（单张增强用）")
+    only_labeled: bool = Field(default=True, description="只处理已标注的图（背景图默认跳过）")
+    include_background: bool = Field(default=False, description="是否也增强 background 目录（机位固定，不建议）")
+    overwrite: bool = Field(default=False, description="已存在同名增强图时是否覆盖")
+    limit: Optional[int] = Field(default=None, ge=1, le=5000, description="最多处理多少张源图（试跑用）")
+
+
+class AugmentCleanRequest(BaseModel):
+    """删除增强产物（只删带增强后缀的文件，不动原图）。"""
+
+    classes: Optional[list[str]] = Field(default=None, description="只清理这些类别；不传=全部")
+    ops: Optional[list[str]] = Field(default=None, description="只清理这些增强方式；不传=全部")
+    dry_run: bool = Field(default=False, description="true = 只统计不删除")
+
+
 class ReferenceRequest(BaseModel):
     """设置背景差分用的参考图（空托盘）。"""
 
@@ -1050,6 +1072,52 @@ async def annotate_claims(request: Request) -> dict[str, Any]:
     services = services_of(request)
     claims = await asyncio.to_thread(services.annotator.claims)
     return {"ok": True, "claims": claims, "count": len(claims), "ttl": services.annotator.claim_ttl}
+
+
+# ---------------------------------------------------------------------------
+# 数据增强：给已标注图生成旋转/翻转/明暗副本，标注同步变换
+# ---------------------------------------------------------------------------
+@app.get("/api/augment/ops")
+async def augment_ops() -> dict[str, Any]:
+    """可用的增强方式（前端据此渲染选项，改 augmenter.py 里的表即可扩展）。"""
+    return {"ok": True, "ops": op_specs()}
+
+
+@app.post("/api/augment/apply")
+async def augment_apply(payload: AugmentRequest, request: Request) -> dict[str, Any]:
+    """生成增强副本（不覆盖原图）。
+
+    产物与原图**同目录**、文件名加后缀（`paper_x.jpg` -> `paper_x_r90.jpg`），
+    所以会直接出现在标注列表里、也能被「生成数据集」自动带上。
+    """
+    services = services_of(request)
+    try:
+        result = await asyncio.to_thread(
+            services.annotator.augment_images,
+            payload.ops,
+            payload.classes,
+            payload.names,
+            payload.only_labeled,
+            payload.include_background,
+            payload.overwrite,
+            payload.limit,
+        )
+    except (AnnotateError, AugmentError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, **result}
+
+
+@app.post("/api/augment/clean")
+async def augment_clean(payload: AugmentCleanRequest, request: Request) -> dict[str, Any]:
+    """删除增强产物（连同同名标签）；`dry_run=true` 只统计不删除。**不会动原图。**"""
+    services = services_of(request)
+    try:
+        result = await asyncio.to_thread(
+            services.annotator.delete_augmented, payload.classes, payload.ops, payload.dry_run
+        )
+    except (AnnotateError, AugmentError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, **result}
 
 
 @app.post("/api/annotate/build")

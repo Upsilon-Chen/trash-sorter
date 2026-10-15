@@ -633,6 +633,72 @@ export function getNetworkInfo(): Promise<NetworkInfo> {
   return request<NetworkInfo>('/api/network');
 }
 
+/* ------------------------------------------- 数据增强（旋转/翻转/明暗） */
+
+export interface AugmentOp {
+  key: string;
+  label_zh: string;
+  /** geometry = 会改标注；photometric = 只改像素、标注照抄 */
+  kind: 'geometry' | 'photometric';
+  suffix: string;
+  hint?: string;
+}
+
+export interface AugmentSummary {
+  ok: boolean;
+  ops: string[];
+  /** 实际处理的源图数量 */
+  sources: number;
+  /** 新建的增强图数量 */
+  created: number;
+  skipped: Record<string, number>;
+  failed: number;
+  failed_examples?: { name: string; reason: string }[];
+  /** 新建文件（最多 50 条），界面用它自动选中新图复核 */
+  created_names: string[];
+  total_images: number;
+}
+
+export function listAugmentOps(): Promise<{ ok: boolean; ops: AugmentOp[] }> {
+  return request<{ ok: boolean; ops: AugmentOp[] }>('/api/augment/ops');
+}
+
+export interface AugmentApplyPayload {
+  ops: string[];
+  classes?: string[];
+  names?: string[];
+  only_labeled?: boolean;
+  include_background?: boolean;
+  overwrite?: boolean;
+  limit?: number;
+}
+
+export function applyAugment(payload: AugmentApplyPayload): Promise<AugmentSummary> {
+  return request<AugmentSummary>('/api/augment/apply', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface AugmentCleanResponse {
+  ok: boolean;
+  matched: number;
+  removed: number;
+  dry_run: boolean;
+  suffixes: string[];
+  examples: string[];
+}
+
+/** 删除增强产物（只删带增强后缀的文件，不动原图）；dry_run 只统计 */
+export function cleanAugment(
+  payload: { classes?: string[]; ops?: string[]; dry_run?: boolean },
+): Promise<AugmentCleanResponse> {
+  return request<AugmentCleanResponse>('/api/augment/clean', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export interface BuildDatasetResult {
   output: string;
   yaml: string;

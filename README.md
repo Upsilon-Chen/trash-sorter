@@ -104,7 +104,8 @@ trash-sorter/
 │       ├── detector.py            # ultralytics 封装、模型热切换
 │       ├── serial_esp32.py        # 串口扫描/连接/收发
 │       ├── pipeline.py            # 检测主循环、冷却、多目标决策
-│       └── annotator.py           # 标注读写、背景差分、数据集导出
+│       ├── annotator.py           # 标注读写、背景差分、数据集导出、数据增强调度
+│       └── augmenter.py           # 旋转/翻转/明暗变换与标注换算（纯函数，可单独复用）
 │
 ├── frontend/                      # 前端（React + Vite + TS + AntD）
 │   ├── vite.config.ts             # /api 与 /ws 反向代理配置
@@ -239,8 +240,17 @@ pio device monitor      # 串口监视（115200）
 3. **自动标注**（可选，强烈推荐）：先清空托盘，点「连拍 8 帧取中值设为参考图」，
    之后点「自动标注当前图」会用**背景差分**（当前图 − 空托盘参考图）自动找出物体并填框；
    参数满意后点「批量自动标注未标注图」
-4. **生成数据集**：点「生成数据集」→ 输出 `training/datasets/captures/` 与 `training/data-captures.yaml`
-5. **训练**：见下一节
+4. **数据增强（可选）**：右栏「数据增强」可以给**已标注**的图批量生成变换后的副本，标注同步换算
+   - 选类别（例如只选 `paper` / `plastic`）+ 选变换：旋转 90°/180°/270°、水平/垂直翻转、提亮/压暗/加噪点
+   - 「**增强当前图**」生成后会自动打开结果，方便肉眼核对框有没有跟着转过去
+   - 「**批量增强**」先弹确认（含预估张数：源图 N × 变换 M），产物与原图**同目录**、文件名加后缀
+     （`paper_x.jpg` → `paper_x_r90.jpg`），所以会直接出现在列表里，「生成数据集」时自动带上
+   - 「**清理增强图**」只删文件名带这些后缀的图（含标签），**原图和手工标注绝不受影响**
+   - 为什么只做 90° 的整数倍和翻转：检测框是**轴对齐矩形**，这些变换下标注能**精确换算**、
+     框里不会混入背景；任意角度旋转会把框撑大，等于教模型学错
+   - 增强产物不会再次被增强（否则 `r90_r90…` 会组合爆炸）；重复执行是幂等的
+5. **生成数据集**：点「生成数据集」→ 输出 `training/datasets/captures/` 与 `training/data-captures.yaml`
+6. **训练**：见下一节
 
 ---
 
@@ -399,6 +409,7 @@ ESP32 → PC：
 | 标注 | `GET /api/annotate/images`、`GET /api/annotate/image`、`GET\|POST /api/annotate/labels`、`DELETE /api/annotate/image` |
 | 协作 | `POST /api/annotate/claim`、`POST /api/annotate/release`、`GET /api/annotate/claims`、`GET /api/network` |
 | 自动标注 | `GET\|POST\|DELETE /api/annotate/reference`、`GET /api/annotate/reference/image`、`POST /api/annotate/auto` |
+| 数据增强 | `GET /api/augment/ops`、`POST /api/augment/apply`、`POST /api/augment/clean` |
 | 数据集 | `POST /api/annotate/build` |
 | WebSocket | `/ws`（命令：`ping` / `state` / `detection.start` / `detection.stop` / `sort.manual` / `camera.select`） |
 

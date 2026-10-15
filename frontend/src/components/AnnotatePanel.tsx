@@ -32,16 +32,19 @@ import {
 import {
   annotateImageUrl,
   API_BASE,
+  applyAugment,
   autoAnnotate,
   buildAnnotateDataset,
   captureFrame,
   claimAnnotateImage,
+  cleanAugment,
   clearReference,
   deleteAnnotateImage,
   errorText,
   getAnnotateLabels,
   getReference,
   listAnnotateImages,
+  listAugmentOps,
   referenceImageUrl,
   releaseAnnotateImage,
   saveAnnotateLabels,
@@ -49,6 +52,7 @@ import {
   type AnnotateBox,
   type AnnotateClass,
   type AnnotateImageItem,
+  type AugmentOp,
   type AutoAnnotateInfo,
   type CameraState,
   type ReferenceInfo,
@@ -174,6 +178,13 @@ export default function AnnotatePanel({
   });
   const [autoRefreshBar, setAutoRefreshBar] = useState(true);
   const [autoTick, setAutoTick] = useState(0);
+  // 数据增强：选的类别（空=全部）、选的变换、只处理已标注、是否含背景图
+  const [augClasses, setAugClasses] = useState<string[]>([]);
+  const [augOps, setAugOps] = useState<string[]>(['rot90']);
+  const [augOpList, setAugOpList] = useState<AugmentOp[]>([]);
+  const [augOnlyLabeled, setAugOnlyLabeled] = useState(true);
+  const [augBackground, setAugBackground] = useState(false);
+  const [augBusy, setAugBusy] = useState(false);
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
@@ -273,6 +284,33 @@ export default function AnnotatePanel({
   }, [autoRefresh]);
 
   const autoSecondsLeft = autoRefresh ? autoRefresh - (autoTick % autoRefresh) : 0;
+
+  // 增强方式清单来自后端（augmenter.py 里的表），加一种变换不用改前端
+  useEffect(() => {
+    listAugmentOps()
+      .then((data) => setAugOpList(data.ops ?? []))
+      .catch(() => undefined);
+  }, []);
+
+  /** 批量增强会处理多少张（与后端同一套过滤规则，仅用于界面预估） */
+  const augEstimate = useMemo(() => {
+    const suffixes = augOpList.map((item) => item.suffix);
+    const sources = images.filter((item) => {
+      if (augClasses.length > 0 && !augClasses.includes(item.category)) return false;
+      if (item.category === 'background' && !augBackground) return false;
+      if (augOnlyLabeled && !item.labeled) return false;
+      const stem = item.name.replace(/\.[^.]+$/, '');
+      // 不对增强产物再增强（否则 r90_r90… 组合爆炸）
+      if (suffixes.some((suffix) => stem.endsWith(suffix))) return false;
+      return true;
+    }).length;
+    return { sources, total: sources * augOps.length };
+  }, [augBackground, augClasses, augOnlyLabeled, augOpList, augOps.length, images]);
+
+  const opLabel = useCallback(
+    (key: string) => augOpList.find((item) => item.key === key)?.label_zh ?? key,
+    [augOpList],
+  );
 
   /** 静默刷新列表并返回最新数据（保存后用来找下一张未标注） */
   const refreshImages = useCallback(async (): Promise<AnnotateImageItem[]> => {
@@ -841,6 +879,158 @@ export default function AnnotatePanel({
     });
   }, [autoMinArea, autoSigma, current, loadImage, modal, refresh]);
 
+  // ------------------------------------------------------------ 数据增强
+  /** 增强当前打开的这张，并自动打开结果——一眼就能看出标注有没有跟着转对 */
+  const handleAugmentCurrent = useCallback(async () => {
+    if (!current || augOps.length === 0) return;
+    setAugBusy(true);
+    try {
+      const data = await applyAugment({
+        names: [current],
+        ops: augOps,
+        // 单张增强：不管有没有标注、是不是背景，都照做（用户是主动点的）
+        only_labeled: false,
+        include_background: true,
+        overwrite: true,
+      });
+      if (data.created === 0) {
+        message.warning('没有生成新图：这张可能本身就是增强产物（不能对增强图再增强）');
+        return;
+      }
+      message.success(`已生成 ${data.created} 张增强图，正在打开第一张核对`);
+      await refresh(true);
+      if (data.created_names[0]) await loadImage(data.created_names[0]);
+    } catch (error) {
+      message.error(errorText(error));
+    } finally {
+      setAugBusy(false);
+    }
+  }, [augOps, current, loadImage, message, refresh]);
+
+  /** 批量增强：先弹确认（含预估张数），再执行 */
+  const handleAugmentBatch = useCallback(() => {
+    if (augOps.length === 0) {
+      message.warning('先选至少一种增强方式');
+      return;
+    }
+    if (augEstimate.sources === 0) {
+      message.warning('当前条件下没有可增强的图片');
+      return;
+    }
+    modal.confirm({
+      title: '批量生成增强图',
+      width: 520,
+      content: (
+        <div style={{ fontSize: 13, lineHeight: 1.9 }}>
+          <div>
+            类别：<b>{augClasses.length ? augClasses.map(labelOf).join('、') : '全部类别'}</b>
+          </div>
+          <div>增强方式：{augOps.map(opLabel).join('、')}</div>
+          <div>
+            源图 <b>{augEstimate.sources}</b> 张 × {augOps.length} 种 ={' '}
+            <b>{augEstimate.total}</b> 张新图
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            原图不会被修改；新图与原图同目录、文件名加后缀，会直接出现在列表里，
+            「生成数据集」时也会自动带上。张数多时请耐心等一会儿。
+          </div>
+        </div>
+      ),
+      okText: '开始生成',
+      cancelText: '取消',
+      onOk: async () => {
+        setAugBusy(true);
+        try {
+          const data = await applyAugment({
+            ops: augOps,
+            classes: augClasses.length ? augClasses : undefined,
+            only_labeled: augOnlyLabeled,
+            include_background: augBackground,
+          });
+          const skipped = Object.entries(data.skipped ?? {})
+            .filter(([, value]) => value > 0)
+            .map(([key, value]) => `${key} ${value}`)
+            .join('，');
+          modal.info({
+            title: '增强完成',
+            width: 520,
+            content: (
+              <div style={{ fontSize: 13, lineHeight: 1.9 }}>
+                <div>
+                  处理源图 <b>{data.sources}</b> 张，新建 <b>{data.created}</b> 张
+                </div>
+                {skipped && <div className="muted">跳过：{skipped}</div>}
+                {data.failed > 0 && <div style={{ color: '#b42318' }}>失败 {data.failed} 张</div>}
+                {(data.failed_examples ?? []).slice(0, 3).map((item) => (
+                  <div key={item.name} className="mono" style={{ fontSize: 12, color: '#b42318' }}>
+                    {item.name}：{item.reason}
+                  </div>
+                ))}
+                <div style={{ marginTop: 6 }} className="muted">
+                  建议点几张增强图核对一下标注框，再点「生成数据集」。
+                </div>
+              </div>
+            ),
+          });
+          await refresh(true);
+        } catch (error) {
+          message.error(errorText(error));
+        } finally {
+          setAugBusy(false);
+        }
+      },
+    });
+  }, [
+    augBackground,
+    augClasses,
+    augEstimate.sources,
+    augEstimate.total,
+    augOnlyLabeled,
+    augOps,
+    labelOf,
+    message,
+    modal,
+    opLabel,
+    refresh,
+  ]);
+
+  /** 清理增强产物（先 dry-run 报数，再确认删除） */
+  const handleAugmentClean = useCallback(async () => {
+    const classes = augClasses.length ? augClasses : undefined;
+    try {
+      const preview = await cleanAugment({ classes, dry_run: true });
+      if (preview.matched === 0) {
+        message.info('没有找到增强产物');
+        return;
+      }
+      modal.confirm({
+        title: '清理增强图',
+        content: (
+          <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+            <div>
+              将删除 <b>{preview.matched}</b> 个增强产物（连同它们的标签文件）。
+            </div>
+            <div style={{ color: '#b42318' }}>只删文件名带增强后缀的图，原图和手工标注不受影响。</div>
+          </div>
+        ),
+        okText: '删除',
+        okButtonProps: { danger: true },
+        cancelText: '取消',
+        onOk: async () => {
+          try {
+            const result = await cleanAugment({ classes });
+            message.success(`已删除 ${result.removed} 个增强产物`);
+            await refresh(true);
+          } catch (error) {
+            message.error(errorText(error));
+          }
+        },
+      });
+    } catch (error) {
+      message.error(errorText(error));
+    }
+  }, [augClasses, message, modal, refresh]);
+
   // ------------------------------------------------------------ 渲染
   const currentBoxes = useMemo(() => {
     const list = [...boxes];
@@ -1288,6 +1478,84 @@ export default function AnnotatePanel({
                 )}
               </div>
             )}
+          </Space>
+
+          <div className="section-title">
+            <span>数据增强（旋转 / 翻转 / 明暗）</span>
+          </div>
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Select
+              mode="multiple"
+              allowClear
+              size="small"
+              style={{ width: '100%' }}
+              placeholder="类别（不选 = 全部）"
+              value={augClasses}
+              onChange={(value: string[]) => setAugClasses(value)}
+              options={classes.map((item) => ({
+                value: item.name,
+                label: `${item.label_zh}（${item.name}）`,
+              }))}
+            />
+            <Select
+              mode="multiple"
+              size="small"
+              style={{ width: '100%' }}
+              placeholder="增强方式"
+              value={augOps}
+              onChange={(value: string[]) => setAugOps(value)}
+              options={augOpList.map((op) => ({
+                value: op.key,
+                label: `${op.label_zh}　${op.suffix}`,
+              }))}
+            />
+            <Space size={10} wrap>
+              <Space size={4}>
+                <Switch size="small" checked={augOnlyLabeled} onChange={setAugOnlyLabeled} />
+                <span className="muted" style={{ fontSize: 12 }}>
+                  只处理已标注图
+                </span>
+              </Space>
+              <Tooltip title="机位固定，旋转空托盘图会造出实际不会出现的方向；一般不勾">
+                <Space size={4}>
+                  <Switch size="small" checked={augBackground} onChange={setAugBackground} />
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    含背景图
+                  </span>
+                </Space>
+              </Tooltip>
+            </Space>
+            <div className="muted" style={{ fontSize: 12 }}>
+              预计：源图 <b>{augEstimate.sources}</b> 张 × {augOps.length} 种 ={' '}
+              <b>{augEstimate.total}</b> 张新图
+            </div>
+            <Button
+              block
+              icon={<ThunderboltOutlined />}
+              loading={augBusy}
+              disabled={!current || augOps.length === 0}
+              onClick={() => void handleAugmentCurrent()}
+            >
+              增强当前图（自动打开结果）
+            </Button>
+            <Button
+              block
+              type="primary"
+              loading={augBusy}
+              disabled={augOps.length === 0}
+              onClick={handleAugmentBatch}
+            >
+              批量增强…
+            </Button>
+            <Button block danger icon={<DeleteOutlined />} onClick={() => void handleAugmentClean()}>
+              清理增强图…
+            </Button>
+            <div className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>
+              只做 <b>90°/180°/270° 与翻转</b>：这些变换下标注框能<b>精确换算</b>；
+              任意角度会把框撑大、混进背景，所以不做。
+              产物与原图同目录（文件名加 <span className="mono">_r90</span> 这类后缀），
+              生成数据集时自动带上。
+            </div>
           </Space>
 
           <div className="section-title">
