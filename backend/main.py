@@ -1422,10 +1422,29 @@ def local_ipv4_addresses() -> list[str]:
     return found
 
 
+def runtime_port() -> int:
+    """实际监听的端口。
+
+    `tools/desktop.py` 启动器可能换端口（8000 被占用时往后找），并把这个端口通过
+    环境变量传进来；否则用 settings.yaml 里配置的值。局域网地址必须用真实端口拼，
+    不然发给另一台电脑的网址是打不开的。
+    """
+    raw = os.environ.get("TRASH_SORTER_PORT")
+    if raw:
+        try:
+            port = int(raw)
+            if 1 <= port <= 65535:
+                return port
+            LOGGER.warning("TRASH_SORTER_PORT=%s 超出范围，忽略", raw)
+        except ValueError:
+            LOGGER.warning("TRASH_SORTER_PORT=%r 不是合法端口，忽略", raw)
+    return int(load_settings()["app"].get("port", 8000))
+
+
 def network_info() -> dict[str, Any]:
     settings = load_settings()
     host = str(settings["app"].get("host", "0.0.0.0"))
-    port = int(settings["app"].get("port", 8000))
+    port = runtime_port()
     urls = [f"http://{address}:{port}" for address in local_ipv4_addresses()]
     return {
         "ok": True,
@@ -1459,7 +1478,7 @@ def main() -> None:
 
     settings = load_settings()
     host = str(settings["app"].get("host", "0.0.0.0"))
-    port = int(settings["app"].get("port", 8000))
+    port = runtime_port()
 
     # 注意：这几行必须用 print —— 日志是在 lifespan 里才 basicConfig 的，
     # 用 LOGGER 打的话（INFO 级）会被直接丢掉，用户根本看不到。

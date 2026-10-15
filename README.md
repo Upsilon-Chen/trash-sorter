@@ -117,6 +117,8 @@ trash-sorter/
 │   └── src/
 │       ├── App.tsx                # 布局与页面切换、WS 事件分发
 │       ├── api.ts                 # 类型化 REST 客户端
+│       ├── theme.tsx              # 明/暗双主题 + 设计令牌（antd token 集中处）
+│       ├── theme.css              # 语义化 CSS 变量、深色覆盖、图表与动效样式
 │       ├── styles.css
 │       └── components/
 │           ├── CameraPanel.tsx    # 摄像头面板（含抓拍采集）
@@ -124,7 +126,18 @@ trash-sorter/
 │           ├── ModelPanel.tsx     # 模型选择与置信度
 │           ├── SerialPanel.tsx    # 串口连接与手动下发
 │           ├── ResultPanel.tsx    # 识别结果与多目标策略
+│           ├── Charts.tsx         # 手写 SVG 图表（环形/条形/迷你趋势/置信度条）
 │           └── AnnotatePanel.tsx  # 数据标注页
+│
+├── tools/                         # 桌面启动器与辅助脚本
+│   ├── desktop.py                 # 一键启动：起后端 + 开原生窗口（WebView2）
+│   └── make_icon.py               # 生成应用图标（assets/app.ico）
+│
+├── assets/
+│   └── app.ico                    # 窗口/任务栏图标
+│
+├── 启动.bat                        # 双击启动（无控制台）
+├── 启动-调试.bat                   # 双击启动（带控制台 + 日志）
 │
 ├── esp32/                         # ESP32 固件
 │   ├── platformio.ini
@@ -170,7 +183,50 @@ trash-sorter/
 | PlatformIO | 仅烧录 ESP32 时需要 |
 | GPU（可选） | 训练建议 NVIDIA + CUDA；推理 CPU 也可运行 |
 
-### 1. 后端
+### 一键启动（推荐，双击即用）
+
+装好依赖、构建过一次前端之后，**双击 `启动.bat`** 就行：
+
+```
+启动.bat          正常启动：自动起后端 → 等就绪 → 开一个原生窗口（无地址栏）
+启动-调试.bat     出问题时用：保留控制台 + 打印日志
+```
+
+它做这些事（`tools/desktop.py`）：
+
+| 步骤 | 说明 |
+| --- | --- |
+| 1. 查重 | 先扫 8000~8010，**已有实例就直接复用它**——避免起第二个后端去抢摄像头 |
+| 2. 选端口 | 8000 被占用则自动往后找，并把真实端口通过 `TRASH_SORTER_PORT` 传给后端（保证局域网地址正确） |
+| 3. 起后端 | 用同一个 Python 解释器起 uvicorn 子进程，日志写 `logs/desktop.log` |
+| 4. 等就绪 | 轮询 `/api/network`（模型加载约 8~10 秒）；子进程中途挂掉会立刻报错而不是干等 |
+| 5. 开窗口 | 用 **Windows 自带的 WebView2** 渲染界面：**没有地址栏和标签页**，看起来就是一个桌面软件，样式与网页 100% 一致 |
+| 6. 收尾 | 窗口一关就结束后端，释放摄像头 |
+
+几个实用的点：
+
+- **依赖缺失/启动失败会弹窗提示**（无控制台也看得见），并附上日志最后几行；
+- **WebView2 不可用时自动降级**为 Edge 的 `--app` 模式（同样没有地址栏）；
+- 窗口的**主题偏好会记住**（存在 `logs/webview-profile/`），下次打开还是你选的主题；
+- 应用图标由 `tools/make_icon.py` 生成（`assets/app.ico`），想改样式跑一次脚本即可。
+
+调试用参数（一般不需要）：
+
+```bash
+python tools/desktop.py --check          # 只起后端并等就绪，不开窗口
+python tools/desktop.py --port 8123      # 指定首选端口
+python tools/desktop.py --browser        # 强制用 Edge --app 模式
+python tools/desktop.py --force-new      # 忽略已在运行的实例
+python tools/desktop.py --selftest 8     # 开窗口 8 秒后自动关闭（自检）
+```
+
+> **说明**：`启动.bat` 走的是"路线①"——直接用**本机已装好的 Python 环境**，
+> 所以体积是 0，但换一台电脑仍需先 `pip install -r backend/requirements.txt`。
+> 要交给不装 Python 的人运行，需要做绿色版（见 [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md)）。
+
+### 手启动（后端 + 前端分离）
+
+#### 1. 后端
 
 ```bash
 # 安装依赖（GPU 版 torch 请先按 https://pytorch.org 装好，再装本文件其余依赖）
@@ -184,7 +240,7 @@ python -m backend.main
 
 把训练好的权重放进 `backend/models/`（例如 `best.pt`），后端启动会自动加载；也可以在前端「模型」面板里热切换。
 
-### 2. 前端
+#### 2. 前端
 
 ```bash
 cd frontend
@@ -202,7 +258,7 @@ VITE_WS_URL=ws://192.168.1.20:8000/ws
 
 生产构建：`npm run build` → 产物在 `frontend/dist/`。
 
-### 3. ESP32
+#### 3. ESP32
 
 ```bash
 cd esp32
