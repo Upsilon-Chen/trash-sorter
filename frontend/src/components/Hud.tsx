@@ -101,7 +101,7 @@ export function HudRing({
   value,
   size = 132,
   caption = '置信度',
-  ticks = 28,
+  ticks = 24,
 }: {
   /** 0~1 */
   value: number;
@@ -144,8 +144,9 @@ export function HudRing({
                 x2={x2}
                 y2={y2}
                 stroke={active ? 'var(--hud-accent)' : 'var(--hud-line)'}
-                strokeWidth={index % 4 === 0 ? 1.4 : 0.9}
-                opacity={active ? 0.95 : 1}
+                strokeWidth={index % 4 === 0 ? 1.6 : 1.1}
+                strokeLinecap="round"
+                opacity={active ? 0.9 : 0.35}
               />
             );
           })}
