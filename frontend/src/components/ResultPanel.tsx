@@ -6,7 +6,6 @@ import {
   Card,
   Empty,
   List,
-  Progress,
   Segmented,
   Space,
   Statistic,
@@ -27,6 +26,7 @@ import {
 } from '../api';
 import { BUCKET_COLORS } from '../theme';
 import { BarList, ConfidenceBar, DonutChart, Sparkline } from './Charts';
+import { HudRing } from './Hud';
 
 export interface ResultPanelProps {
   /** 最近一次 WS detection 推送 */
@@ -173,9 +173,7 @@ export default function ResultPanel({ detection, snapshot, confidence, history }
       dataIndex: 'confidence',
       key: 'confidence',
       width: 128,
-      render: (value: number, record) => (
-        <ConfidenceBar value={value} color={bucketColor(slotOf(record.class_name) ?? 0)} />
-      ),
+      render: (value: number) => <ConfidenceBar value={value} />,
     },
     {
       title: 'bbox (x1, y1, x2, y2)',
@@ -315,19 +313,7 @@ export default function ResultPanel({ detection, snapshot, confidence, history }
           )}
         </div>
         <div className="result-gauge">
-          <Progress
-            type="dashboard"
-            percent={best ? Math.round(best.confidence * 100) : 0}
-            size={132}
-            strokeColor={best ? (best.confidence >= 0.6 ? '#12b76a' : '#f79009') : '#d0d5dd'}
-            format={(percent) => (
-              <span className="gauge-text">
-                {percent ?? 0}
-                <span className="gauge-unit">%</span>
-                <span className="gauge-caption">置信度</span>
-              </span>
-            )}
-          />
+          <HudRing value={best?.confidence ?? 0} size={136} caption="置信度" />
         </div>
       </div>
 

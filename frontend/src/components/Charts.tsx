@@ -9,6 +9,8 @@
 
 import { useId, useMemo } from 'react';
 
+import { HudMeter } from './Hud';
+
 export interface ChartDatum {
   label: string;
   value: number;
@@ -160,14 +162,7 @@ export function Sparkline({
 
 /* ------------------------------------------------------------------ 置信度条 */
 
-export function ConfidenceBar({ value, color = 'var(--brand)' }: { value: number; color?: string }) {
-  const percent = Math.round(Math.min(Math.max(value, 0), 1) * 100);
-  return (
-    <span className="conf-bar" title={`置信度 ${percent}%`}>
-      <span className="conf-track">
-        <span className="conf-fill" style={{ width: `${percent}%`, background: color }} />
-      </span>
-      <span className="conf-value mono">{percent}%</span>
-    </span>
-  );
+/** HUD 风格的分段刻度条：比连续进度条更有"仪器感" */
+export function ConfidenceBar({ value }: { value: number }) {
+  return <HudMeter value={value} cells={10} />;
 }

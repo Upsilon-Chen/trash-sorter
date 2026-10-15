@@ -34,6 +34,7 @@ import {
   type SortEventData,
 } from './api';
 import { useThemeMode } from './theme';
+import { HudChip } from './components/Hud';
 
 const HISTORY_LIMIT = 30;
 const LOG_LIMIT = 50;
@@ -182,37 +183,57 @@ export default function App() {
 
   const classes = useMemo(() => snapshot?.classes ?? {}, [snapshot]);
 
-  const wsTag = useMemo(() => {
-    if (wsStatus === 'open') return <Tag color="green">实时通道已连接</Tag>;
-    if (wsStatus === 'connecting') return <Tag color="gold">连接中…</Tag>;
-    return <Tag color="red">实时通道断开</Tag>;
-  }, [wsStatus]);
-
   const canStart = Boolean(cameraState?.opened) && Boolean(modelState?.loaded);
 
+  // HUD 状态条上的时钟（每秒刷新一次，只在页头显示，开销可忽略）
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const clockText = clock.toLocaleTimeString('zh-CN', { hour12: false });
+
   return (
-    <div className="app-shell">
+    <div className="app-shell hud">
       <header className="app-header">
-        <div className="brand">
-          <div className="brand-logo">♻️</div>
+        <div className="brand-mark">
+          <div className="brand-logo">♻</div>
           <div className="brand-text">
-            <h1>YOLO 垃圾自动识别分类系统</h1>
-            <p>摄像头采集 → YOLO 推理 → classes.json 映射 → ESP32 舵机分类</p>
+            <h1 className="brand-title">YOLO 垃圾自动识别分类系统</h1>
+            <p className="brand-sub">Waste Sorting · Vision → Mapping → Servo</p>
           </div>
+        </div>
+
+        <div className="hud-status">
+          <HudChip label="SYS" value={clockText} />
+          <Tooltip title={trashSocket.url}>
+            <span>
+              <HudChip
+                label="WS"
+                value={wsStatus === 'open' ? 'LINK' : wsStatus === 'connecting' ? 'SYNC' : 'LOST'}
+                state={wsStatus === 'open' ? 'ok' : wsStatus === 'connecting' ? 'warn' : 'off'}
+              />
+            </span>
+          </Tooltip>
+          <HudChip
+            label="CAM"
+            value={cameraState?.opened ? `IDX ${cameraState.camera?.index ?? '-'}` : 'OFF'}
+            state={cameraState?.opened ? 'ok' : 'off'}
+          />
+          <HudChip
+            label="MODEL"
+            value={modelState?.loaded ? 'READY' : 'NONE'}
+            state={modelState?.loaded ? 'ok' : 'warn'}
+          />
+          <HudChip
+            label="ESP32"
+            value={serialState?.connected ? serialState.connection?.port ?? 'LINK' : 'OFF'}
+            state={serialState?.connected ? 'ok' : 'off'}
+          />
         </div>
 
         <div className="header-right">
           <Space size={6} wrap className="header-tags">
-            <Tooltip title={trashSocket.url}>{wsTag}</Tooltip>
-            <Tag color={cameraState?.opened ? 'blue' : 'default'}>
-              {cameraState?.opened ? `Camera ${cameraState.camera?.index ?? '-'}` : '未选摄像头'}
-            </Tag>
-            <Tag color={modelState?.loaded ? 'geekblue' : 'default'}>
-              {modelState?.loaded ? modelState.current : '模型未加载'}
-            </Tag>
-            <Tag color={serialState?.connected ? 'cyan' : 'default'}>
-              {serialState?.connected ? `串口 ${serialState.connection?.port}` : '串口未连接'}
-            </Tag>
             {network?.frontend_served && network.urls.length > 0 && (
               <Tooltip
                 title={
@@ -306,21 +327,22 @@ export default function App() {
             selectedKeys={[page]}
             onClick={(info) => setPage(info.key as PageKey)}
             items={[
-              { key: 'dashboard', icon: <DashboardOutlined />, label: '控制台' },
-              { key: 'annotate', icon: <EditOutlined />, label: '数据标注' },
+              { key: 'dashboard', icon: <DashboardOutlined />, label: '01 控制台' },
+              { key: 'annotate', icon: <EditOutlined />, label: '02 数据标注' },
             ]}
           />
+          <div className="hud-ruler" />
           <div className="sider-hint">
             {page === 'dashboard'
-              ? '摄像头 / 模型 / 串口 / 识别结果'
+              ? '摄像头 · 模型 · 串口'
               : '给抓拍图打框，导出成可训练数据集'}
           </div>
         </aside>
 
-        <main className="app-main">
+        <main className="app-main hud-scope">
           {page === 'dashboard' ? (
             <Row gutter={[16, 16]}>
-              <Col xs={24} xl={14}>
+              <Col xs={24} xl={13}>
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <CameraPanel
                     cameraState={cameraState}
@@ -328,16 +350,17 @@ export default function App() {
                     onStateRefresh={() => requestState()}
                     classes={classes}
                   />
+                </Space>
+              </Col>
+              <Col xs={24} xl={11}>
+                <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <ResultPanel
                     detection={detection}
                     snapshot={snapshot}
                     confidence={confidence}
                     history={history}
                   />
-                </Space>
-              </Col>
-              <Col xs={24} xl={10}>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+
                   <ModelPanel
                     modelState={modelState}
                     onModelState={setModelState}

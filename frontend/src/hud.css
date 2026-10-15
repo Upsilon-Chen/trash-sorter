@@ -1,0 +1,1322 @@
+/* ============================================================================
+   HUD 皮肤 —— 工业战术 HUD 结构 + 生物环保绿配色（A+C 融合）
+   ----------------------------------------------------------------------------
+   设计原则（照抄参考站的可复用规律，但克制）：
+     1. 近黑底 + 局部光晕，整体低饱和；强调色占比 <5%
+     2. 直角/切角 + 1px 细线 + 四角直角标记 + 面板编号（SEC.01）
+     3. 极端字号对比：10~11px 大写标签 vs 28~44px 等宽数值
+     4. 装饰层永远比内容层淡（白 6~12%），信息永远最亮
+     5. 结构（切角/细线/刻度/字距）在明暗两套主题下都生效；
+        氛围（网格/扫描线/发光/暗角）只在深色下开启，浅色留给投影和打印
+
+   antd 的角色：只提供行为（表格、弹窗、表单、选择器），外观在这里统一覆盖。
+   选择器带 .hud 作用域提高优先级，避免和 antd 运行时注入的 :where() 样式打架
+   （弹层挂在 body 下，用双类选择器或 !important 处理）。
+   ============================================================================ */
+
+:root {
+  --hud-cut: 12px;                                  /* 切角尺寸 */
+  --hud-display: 'Rajdhani', 'Inter', system-ui, sans-serif;
+  --hud-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --hud-track: 0.16em;                              /* 标签字距 */
+}
+
+[data-theme='dark'] {
+  --hud-bg: #050A07;
+  --hud-glow-a: rgba(53, 240, 160, 0.10);
+  --hud-glow-b: rgba(87, 224, 210, 0.07);
+  --hud-panel: rgba(11, 22, 17, 0.62);
+  --hud-panel-solid: #0B1611;
+  --hud-panel-head: linear-gradient(90deg, rgba(53, 240, 160, 0.10) 0%, rgba(11, 22, 17, 0) 55%);
+  --hud-line: rgba(140, 255, 200, 0.10);
+  --hud-line-2: rgba(140, 255, 200, 0.24);
+  --hud-hair: rgba(255, 255, 255, 0.055);
+  --hud-ink: #E9F4ED;
+  --hud-ink-2: #AFC4B8;
+  --hud-ink-3: #82978B;
+  --hud-accent: #35F0A0;
+  --hud-accent-2: #9BF7C9;
+  --hud-accent-ink: #04160D;
+  --hud-accent-dim: rgba(53, 240, 160, 0.14);
+  --hud-cyan: #57E0D2;
+  --hud-warn: #F7B955;
+  --hud-danger: #FF7A6B;
+  --hud-violet: #B49BFF;
+  --hud-glow: 0 0 0 1px rgba(53, 240, 160, 0.35), 0 0 20px rgba(53, 240, 160, 0.20);
+  --hud-drop: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.55));
+  --hud-track-color: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme='light'] {
+  --hud-bg: #EDF1EE;
+  --hud-glow-a: transparent;
+  --hud-glow-b: transparent;
+  --hud-panel: rgba(255, 255, 255, 0.92);
+  --hud-panel-solid: #FFFFFF;
+  --hud-panel-head: linear-gradient(90deg, rgba(18, 183, 106, 0.10) 0%, rgba(255, 255, 255, 0) 55%);
+  --hud-line: rgba(10, 60, 38, 0.14);
+  --hud-line-2: rgba(10, 60, 38, 0.30);
+  --hud-hair: rgba(16, 24, 40, 0.07);
+  --hud-ink: #08170F;
+  --hud-ink-2: #44554B;
+  --hud-ink-3: #6C7C73;
+  --hud-accent: #0B8F52;
+  --hud-accent-2: #12B76A;
+  --hud-accent-ink: #FFFFFF;
+  --hud-accent-dim: rgba(18, 183, 106, 0.12);
+  --hud-cyan: #0E9384;
+  --hud-warn: #B54708;
+  --hud-danger: #B42318;
+  --hud-violet: #6941C6;
+  --hud-glow: 0 0 0 1px rgba(18, 183, 106, 0.35), 0 6px 18px rgba(18, 183, 106, 0.14);
+  --hud-drop: drop-shadow(0 10px 22px rgba(16, 24, 40, 0.10));
+  --hud-track-color: rgba(16, 24, 40, 0.07);
+}
+
+/* ------------------------------------------------------------ 背景与氛围 */
+
+body {
+  background-color: var(--hud-bg);
+  color: var(--hud-ink);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+    sans-serif;
+}
+
+/* 网格 + 光晕：装饰层极淡，只为"有底纹" */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1000px 560px at 78% -12%, var(--hud-glow-a), transparent 62%),
+    radial-gradient(760px 520px at 4% 108%, var(--hud-glow-b), transparent 62%),
+    repeating-linear-gradient(0deg, var(--hud-hair) 0 1px, transparent 1px 46px),
+    repeating-linear-gradient(90deg, var(--hud-hair) 0 1px, transparent 1px 46px);
+}
+
+/* 缓慢下移的扫描线（深色才有意义） */
+body::after {
+  content: '';
+  position: fixed;
+  inset: -50% 0 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.020) 0 1px, transparent 1px 4px);
+  animation: hud-scan 14s linear infinite;
+}
+
+[data-theme='light'] body::after {
+  display: none;
+}
+
+@keyframes hud-scan {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(25%);
+  }
+}
+
+/* 内容压在背景层之上 */
+.app-shell {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+.app-body,
+.app-main {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------ 顶部状态条 */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--hud-bg) 82%, transparent) !important;
+  backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid var(--hud-line) !important;
+  box-shadow: none !important;
+  padding: 10px 20px !important;
+}
+
+[data-theme='dark'] .app-header {
+  background: color-mix(in srgb, var(--hud-bg) 78%, transparent) !important;
+}
+
+.app-header::after {
+  /* 品牌色下划线：一条 2px 的强调（HUD 常见做法） */
+  content: '';
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--hud-accent) 0%, transparent 38%);
+  opacity: 0.7;
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--hud-line-2);
+  color: var(--hud-accent);
+  font-size: 16px;
+  clip-path: polygon(0 8px, 8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+  background: var(--hud-accent-dim);
+}
+
+.brand-title {
+  font-family: var(--hud-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+  color: var(--hud-ink);
+}
+
+.brand-sub {
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  letter-spacing: var(--hud-track);
+  color: var(--hud-ink-3);
+  text-transform: uppercase;
+}
+
+/* 状态条（时间 / 连接 / 相机 / 串口） */
+.hud-status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.hud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--hud-line);
+  background: rgba(255, 255, 255, 0.015);
+  font-family: var(--hud-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--hud-ink-2);
+  text-transform: uppercase;
+}
+
+.hud-chip strong {
+  color: var(--hud-ink);
+  font-weight: 500;
+}
+
+.hud-chip.is-ok {
+  border-color: color-mix(in srgb, var(--hud-accent) 45%, transparent);
+  color: var(--hud-accent-2);
+}
+
+.hud-chip.is-warn {
+  border-color: color-mix(in srgb, var(--hud-warn) 45%, transparent);
+  color: var(--hud-warn);
+}
+
+.hud-chip.is-off {
+  opacity: 0.55;
+}
+
+/* 状态点（呼吸） */
+.hud-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hud-accent);
+  box-shadow: 0 0 8px var(--hud-accent);
+  animation: hud-pulse 2.4s ease-in-out infinite;
+}
+
+.hud-dot.is-warn {
+  background: var(--hud-warn);
+  box-shadow: 0 0 8px var(--hud-warn);
+}
+
+.hud-dot.is-off {
+  background: var(--hud-ink-3);
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes hud-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+/* ------------------------------------------------------------ 侧边导航 */
+
+.app-sider {
+  background: transparent !important;
+  border-right: 1px solid var(--hud-line) !important;
+}
+
+.app-sider .ant-menu {
+  background: transparent !important;
+  border-inline-end: none !important;
+  padding: 10px 8px;
+}
+
+.app-sider .ant-menu-item {
+  position: relative;
+  height: 40px;
+  line-height: 40px;
+  margin: 4px 0 !important;
+  border: 1px solid transparent;
+  border-radius: 0 !important;
+  font-family: var(--hud-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--hud-ink-2) !important;
+}
+
+.app-sider .ant-menu-item-selected {
+  background: var(--hud-accent-dim) !important;
+  border-color: var(--hud-line-2);
+  color: var(--hud-accent-2) !important;
+}
+
+.app-sider .ant-menu-item-selected::before {
+  /* 选中项左侧的强调竖条 */
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--hud-accent);
+  box-shadow: 0 0 10px var(--hud-accent);
+}
+
+.app-sider .ant-menu-item:hover {
+  color: var(--hud-ink) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* 侧栏底部的小刻度尺，纯装饰 */
+.hud-ruler {
+  margin: 10px 14px;
+  height: 26px;
+  border-left: 1px solid var(--hud-line);
+  background-image: repeating-linear-gradient(90deg, var(--hud-line) 0 1px, transparent 1px 7px);
+  background-size: 100% 8px;
+  background-position: bottom left;
+  background-repeat: repeat-x;
+  opacity: 0.7;
+}
+
+/* ------------------------------------------------------------ HUD 面板 */
+
+.hud-scope {
+  counter-reset: hud-sec;
+}
+
+.panel-card {
+  position: relative;
+  background: var(--hud-panel) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--hud-line) !important;
+  border-radius: 0 !important;
+  filter: var(--hud-drop);
+  clip-path: polygon(
+    0 var(--hud-cut),
+    var(--hud-cut) 0,
+    100% 0,
+    100% calc(100% - var(--hud-cut)),
+    calc(100% - var(--hud-cut)) 100%,
+    0 100%
+  );
+  transition: border-color 0.25s var(--ease), filter 0.25s var(--ease);
+}
+
+.panel-card:hover {
+  border-color: var(--hud-line-2) !important;
+  transform: none;
+  box-shadow: none;
+}
+
+/* 两个未切角的角上画直角标记 */
+.panel-card > .ant-card-head::before,
+.panel-card > .ant-card-head::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid var(--hud-line-2);
+  pointer-events: none;
+}
+
+.panel-card > .ant-card-head::before {
+  right: 6px;
+  border-right: 1px solid var(--hud-line-2);
+}
+
+.panel-card > .ant-card-head::after {
+  right: 12px;
+  top: 12px;
+  border-top-color: transparent;
+  border-right: none;
+  border-bottom: 1px solid var(--hud-line);
+  border-left: 1px solid var(--hud-line);
+  width: 10px;
+  height: 10px;
+}
+
+.panel-card .ant-card-head {
+  position: relative;
+  min-height: 40px;
+  padding: 0 16px;
+  background: var(--hud-panel-head);
+  border-bottom: 1px solid var(--hud-line);
+  border-radius: 0;
+}
+
+.panel-card .ant-card-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+}
+
+/* 面板编号 SEC.01 / SEC.02 …（按 DOM 顺序自动编号，不用改 JSX） */
+.hud-scope .panel-card .ant-card-head-title::before {
+  counter-increment: hud-sec;
+  content: 'SEC.' counter(hud-sec, decimal-leading-zero);
+  font-family: var(--hud-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--hud-ink-3);
+  border: 1px solid var(--hud-line);
+  padding: 1px 4px;
+  line-height: 1.4;
+}
+
+.panel-card .ant-card-body {
+  padding: 14px 16px;
+}
+
+/* 面板标题排版 */
+.panel-title {
+  font-family: var(--hud-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--hud-ink);
+}
+
+.panel-title .anticon {
+  color: var(--hud-accent);
+  font-size: 14px;
+}
+
+.section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 14px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--hud-line);
+  font-family: var(--hud-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+  color: var(--hud-ink-2);
+}
+
+/* ------------------------------------------------------------ 排版与数值 */
+
+.hud-label {
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+  color: var(--hud-ink-3);
+}
+
+.hud-value {
+  font-family: var(--hud-mono);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--hud-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-value.is-accent {
+  color: var(--hud-accent);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--hud-accent) 45%, transparent);
+}
+
+.hud-unit {
+  font-family: var(--hud-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--hud-ink-3);
+  margin-left: 4px;
+  text-transform: uppercase;
+}
+
+.hud-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--hud-line);
+  background: rgba(255, 255, 255, 0.015);
+  min-width: 96px;
+}
+
+.hud-stat.is-accent {
+  border-color: var(--hud-line-2);
+  background: var(--hud-accent-dim);
+}
+
+.hud-stat-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 主结果：整屏最亮的信息 */
+.hud-hero {
+  position: relative;
+  padding: 14px 18px;
+  border: 1px solid var(--hud-line-2);
+  background:
+    linear-gradient(120deg, var(--hud-accent-dim) 0%, transparent 55%),
+    rgba(255, 255, 255, 0.015);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+}
+
+.hud-hero::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--hud-accent) 0%, var(--hud-cyan) 100%);
+  box-shadow: 0 0 16px var(--hud-accent);
+}
+
+.hud-hero-label {
+  font-family: var(--hud-display);
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--hud-ink);
+  text-shadow: 0 0 26px color-mix(in srgb, var(--hud-accent) 30%, transparent);
+}
+
+/* ---------------------------------------------------- 分段刻度条 / 仪表 */
+
+.hud-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-meter-track {
+  display: flex;
+  gap: 2px;
+  flex: 1 1 auto;
+}
+
+.hud-meter-cell {
+  flex: 1 1 0;
+  height: 8px;
+  background: var(--hud-track-color);
+  transition: background 0.3s var(--ease), box-shadow 0.3s var(--ease);
+}
+
+.hud-meter-cell.is-on {
+  background: var(--hud-accent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-accent) 55%, transparent);
+}
+
+.hud-meter-cell.is-warn {
+  background: var(--hud-warn);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-warn) 45%, transparent);
+}
+
+.hud-meter-cell.is-danger {
+  background: var(--hud-danger);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-danger) 45%, transparent);
+}
+
+.hud-meter-value {
+  font-family: var(--hud-mono);
+  font-size: 12px;
+  min-width: 38px;
+  text-align: right;
+  color: var(--hud-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------ 环形仪表 */
+
+.hud-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.hud-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.hud-stat .hud-value {
+  font-size: 21px;
+}
+
+/* ------------------------------------------------ 图表（工业刻度风格） */
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, max-content) 1fr;
+  gap: 20px;
+  align-items: center;
+}
+
+@media (max-width: 1400px) {
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 200px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 76px 1fr 52px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.bar-label {
+  color: var(--hud-ink-2);
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-track {
+  position: relative;
+  height: 10px;
+  background:
+    repeating-linear-gradient(90deg, var(--hud-line) 0 1px, transparent 1px 10%),
+    var(--hud-track-color);
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  position: relative;
+  transition: width 0.6s var(--ease);
+}
+
+.bar-fill::after {
+  /* 条末端的亮点，像仪表指针 */
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #fff;
+  opacity: 0.85;
+  box-shadow: 0 0 10px #fff;
+}
+
+.bar-value {
+  text-align: right;
+  font-family: var(--hud-mono);
+  color: var(--hud-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.sparkline {
+  width: 100%;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--hud-accent) 40%, transparent));
+}
+
+.sparkline-label {
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+  color: var(--hud-ink-3);
+  margin-bottom: 4px;
+}
+
+.donut-value {
+  font-family: var(--hud-mono);
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--hud-ink);
+}
+
+.donut-label {
+  font-family: var(--hud-mono);
+  font-size: 9px;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+  color: var(--hud-ink-3);
+}
+
+/* ------------------------------------------------------ antd 行为层覆盖 */
+
+.hud .ant-btn {
+  border-radius: 0;
+  font-family: var(--hud-display);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  box-shadow: none;
+}
+
+.hud .ant-btn-default {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--hud-line-2);
+  color: var(--hud-ink);
+}
+
+.hud .ant-btn-default:hover {
+  border-color: var(--hud-accent) !important;
+  color: var(--hud-accent) !important;
+  background: var(--hud-accent-dim);
+}
+
+.hud .ant-btn-primary {
+  background: var(--hud-accent);
+  border-color: var(--hud-accent);
+  color: var(--hud-accent-ink);
+}
+
+.hud .ant-btn-primary:hover {
+  box-shadow: var(--hud-glow);
+  background: var(--hud-accent-2);
+}
+
+.hud .ant-btn-text {
+  color: var(--hud-ink-2);
+}
+
+.hud .ant-btn-dangerous {
+  border-color: color-mix(in srgb, var(--hud-danger) 45%, transparent);
+  color: var(--hud-danger);
+}
+
+.hud .ant-btn[disabled],
+.hud .ant-btn[disabled]:hover {
+  background: transparent !important;
+  border-color: var(--hud-line) !important;
+  color: var(--hud-ink-3) !important;
+  box-shadow: none !important;
+}
+
+/* 表格：细线、无斑马、表头小字大间距 */
+.hud .ant-table {
+  background: transparent;
+  font-size: 12.5px;
+}
+
+.hud .ant-table-thead > tr > th {
+  background: transparent !important;
+  border-bottom: 1px solid var(--hud-line-2) !important;
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+  color: var(--hud-ink-3) !important;
+}
+
+.hud .ant-table-thead > tr > th::before {
+  display: none !important;
+}
+
+.hud .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--hud-line) !important;
+  color: var(--hud-ink);
+}
+
+.hud .ant-table-tbody > tr:hover > td {
+  background: var(--hud-accent-dim) !important;
+}
+
+.hud .row-active > td {
+  background: var(--hud-accent-dim) !important;
+}
+
+/* 标签：直角 + 等宽小字 */
+.hud .ant-tag {
+  border-radius: 0;
+  background: transparent;
+  border-color: var(--hud-line-2);
+  color: var(--hud-ink-2);
+  font-family: var(--hud-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  padding-inline: 6px;
+}
+
+/* 分段控件：像一排按钮 */
+.hud .ant-segmented {
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--hud-line);
+  padding: 2px;
+}
+
+.hud .ant-segmented-item {
+  border-radius: 0 !important;
+  font-family: var(--hud-display);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--hud-ink-2);
+}
+
+.hud .ant-segmented-item-selected {
+  background: var(--hud-accent-dim) !important;
+  color: var(--hud-accent-2) !important;
+  box-shadow: inset 0 0 0 1px var(--hud-line-2);
+}
+
+.hud .ant-segmented-thumb {
+  border-radius: 0 !important;
+  background: var(--hud-accent-dim) !important;
+}
+
+/* 输入类控件统一直角细线 */
+.hud .ant-select-selector,
+.hud .ant-input,
+.hud .ant-input-number,
+.hud .ant-input-affix-wrapper,
+.hud .ant-picker {
+  border-radius: 0 !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-color: var(--hud-line-2) !important;
+  color: var(--hud-ink) !important;
+}
+
+.hud .ant-select-selection-item,
+.hud .ant-select-selection-placeholder {
+  font-size: 12.5px;
+}
+
+.hud .ant-switch {
+  border-radius: 0;
+}
+
+.hud .ant-empty-description {
+  font-family: var(--hud-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--hud-ink-3);
+}
+
+.hud .ant-alert {
+  border-radius: 0;
+  border-width: 1px;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--hud-line-2);
+}
+
+.hud .ant-alert-warning {
+  border-color: color-mix(in srgb, var(--hud-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--hud-warn) 8%, transparent);
+}
+
+.hud .ant-alert-error {
+  border-color: color-mix(in srgb, var(--hud-danger) 45%, transparent);
+  background: color-mix(in srgb, var(--hud-danger) 8%, transparent);
+}
+
+.hud .ant-statistic-title {
+  font-family: var(--hud-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+  color: var(--hud-ink-3) !important;
+}
+
+.hud .ant-statistic-content {
+  font-family: var(--hud-mono) !important;
+  font-size: 20px !important;
+  color: var(--hud-ink) !important;
+}
+
+.hud .ant-statistic-content-suffix {
+  font-size: 11px !important;
+  color: var(--hud-ink-3) !important;
+}
+
+.hud .ant-descriptions-item-label {
+  font-family: var(--hud-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+  color: var(--hud-ink-3) !important;
+  background: transparent !important;
+}
+
+.hud .ant-descriptions-item-content {
+  color: var(--hud-ink) !important;
+}
+
+.hud .ant-descriptions-view,
+.hud .ant-descriptions-item {
+  border-color: var(--hud-line) !important;
+}
+
+.hud .ant-progress-text {
+  font-family: var(--hud-mono) !important;
+  color: var(--hud-ink) !important;
+}
+
+.hud .ant-list-item {
+  border-block-end: 1px dashed var(--hud-line) !important;
+}
+
+.hud .ant-divider {
+  border-color: var(--hud-line);
+}
+
+.hud .ant-card-small > .ant-card-head {
+  min-height: 34px;
+}
+
+/* 弹层挂在 body 下，用双类选择器保证优先级 */
+.ant-modal .ant-modal-content,
+.ant-modal .ant-modal-header {
+  border-radius: 0;
+  background: var(--hud-panel-solid, #0B1611);
+  border: 1px solid var(--hud-line, rgba(140, 255, 200, 0.14));
+}
+
+.ant-modal .ant-modal-title {
+  font-family: var(--hud-display, sans-serif);
+  letter-spacing: 0.05em;
+}
+
+.ant-select-dropdown,
+.ant-dropdown-menu {
+  border-radius: 0 !important;
+  background: var(--hud-panel-solid, #0B1611) !important;
+  border: 1px solid var(--hud-line, rgba(140, 255, 200, 0.14));
+}
+
+.ant-tooltip-inner {
+  border-radius: 0 !important;
+  font-size: 12px;
+}
+
+/* --------------------------------------------------- 结果区 / 历史 / 日志 */
+
+.result-hero,
+.hud-hero {
+  background: linear-gradient(120deg, var(--hud-accent-dim) 0%, transparent 55%), rgba(255, 255, 255, 0.015);
+  border-color: var(--hud-line-2);
+}
+
+.result-label {
+  font-family: var(--hud-display);
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--hud-ink);
+  text-shadow: 0 0 24px color-mix(in srgb, var(--hud-accent) 28%, transparent);
+}
+
+.result-sub {
+  font-family: var(--hud-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--hud-ink-3);
+}
+
+.history-box,
+.serial-log {
+  background: rgba(0, 0, 0, 0.18) !important;
+  border: 1px solid var(--hud-line) !important;
+  border-radius: 0 !important;
+}
+
+.history-item,
+.serial-log-item {
+  font-size: 12px;
+}
+
+.count-tags .ant-tag,
+.count-tag {
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.count-tag-label {
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+}
+
+.stat-item,
+.metric-tile {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--hud-line);
+  border-radius: 0;
+}
+
+.stat-label,
+.metric-label {
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+  color: var(--hud-ink-3);
+}
+
+.stat-value,
+.metric-value {
+  font-family: var(--hud-mono);
+  color: var(--hud-ink);
+}
+
+.error-line {
+  border-radius: 0;
+  font-family: var(--hud-mono);
+  font-size: 12px;
+}
+
+/* 摄像头画面 / 标注画布：深色舞台 + 取景框角标 */
+.camera-preview,
+.camera-preview-stage,
+.anno-stage {
+  border-radius: 0 !important;
+}
+
+.camera-preview-stage,
+.anno-stage {
+  position: relative;
+  border: 1px solid var(--hud-line-2);
+  background: #040806;
+}
+
+.camera-preview-stage::before,
+.anno-stage::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, var(--hud-line-2) 0 14px, transparent 14px) 0 0 / 100% 1px no-repeat,
+    linear-gradient(to bottom, var(--hud-line-2) 0 14px, transparent 14px) 0 0 / 1px 100% no-repeat,
+    linear-gradient(to left, var(--hud-line-2) 0 14px, transparent 14px) 100% 0 / 100% 1px no-repeat,
+    linear-gradient(to bottom, var(--hud-line-2) 0 14px, transparent 14px) 100% 0 / 1px 100% no-repeat,
+    linear-gradient(to right, var(--hud-line-2) 0 14px, transparent 14px) 0 100% / 100% 1px no-repeat,
+    linear-gradient(to top, var(--hud-line-2) 0 14px, transparent 14px) 0 100% / 1px 100% no-repeat,
+    linear-gradient(to left, var(--hud-line-2) 0 14px, transparent 14px) 100% 100% / 100% 1px no-repeat,
+    linear-gradient(to top, var(--hud-line-2) 0 14px, transparent 14px) 100% 100% / 1px 100% no-repeat;
+  opacity: 0.85;
+}
+
+/* 标注页的列表项 */
+.annotate-item {
+  border-radius: 0 !important;
+  border: 1px solid transparent;
+}
+
+.annotate-item:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: var(--hud-line);
+}
+
+.annotate-item.active {
+  background: var(--hud-accent-dim) !important;
+  border-color: var(--hud-line-2);
+}
+
+.sider-hint {
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  letter-spacing: 0.06em;
+  color: var(--hud-ink-3);
+}
+
+.auto-refresh-bar {
+  border-radius: 0 !important;
+  border: 1px solid var(--hud-line) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* 滚动条 */
+.hud ::-webkit-scrollbar-thumb,
+.serial-log::-webkit-scrollbar-thumb,
+.history-box::-webkit-scrollbar-thumb,
+.annotate-list::-webkit-scrollbar-thumb,
+.ant-table-body::-webkit-scrollbar-thumb {
+  background: var(--hud-line-2);
+  border-radius: 0;
+}
+
+/* ------------------------------------------- 仪表盘的预览待机框 */
+
+.preview-frame {
+  position: relative;
+  max-height: 396px;
+  border-radius: 0;
+  border: 1px solid var(--hud-line-2);
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--hud-accent) 7%, transparent) 0%, transparent 62%),
+    repeating-linear-gradient(0deg, var(--hud-hair) 0 1px, transparent 1px 34px),
+    repeating-linear-gradient(90deg, var(--hud-hair) 0 1px, transparent 1px 34px),
+    #040806;
+}
+
+/* 待机时把 antd Empty 的浅灰插图压到很淡（缩小时它像一把锁，很出戏） */
+.preview-idle .ant-empty-image {
+  opacity: 0.12;
+  filter: grayscale(1);
+}
+
+.preview-idle .ant-empty-description {
+  font-family: var(--hud-mono) !important;
+  font-size: 11px !important;
+  letter-spacing: var(--hud-track);
+  text-transform: uppercase;
+  color: var(--hud-ink-3) !important;
+}
+
+.preview-overlay {
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.preview-error {
+  border-radius: 0 !important;
+  font-family: var(--hud-mono);
+  letter-spacing: 0.06em;
+}
+
+/* ------------------------------------------- 滑杆 / 提示条 HUD 化 */
+
+.hud .ant-slider {
+  margin: 6px 10px 14px;
+}
+
+.hud .ant-slider-rail {
+  background: var(--hud-track-color) !important;
+  border-radius: 0;
+  height: 4px;
+}
+
+.hud .ant-slider-track {
+  background: var(--hud-accent) !important;
+  border-radius: 0;
+  height: 4px;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-accent) 45%, transparent);
+}
+
+.hud .ant-slider-handle::after {
+  width: 10px !important;
+  height: 10px !important;
+  inset-inline-start: 3px !important;
+  top: 3px !important;
+  border-radius: 0 !important;
+  background: var(--hud-bg) !important;
+  box-shadow: 0 0 0 2px var(--hud-accent) !important;
+}
+
+.hud .ant-slider-mark-text {
+  font-family: var(--hud-mono);
+  font-size: 11px;
+  color: var(--hud-ink-3);
+}
+
+.hud .ant-alert {
+  padding: 7px 11px;
+}
+
+.hud .ant-alert-info {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-color: var(--hud-line-2) !important;
+}
+
+.hud .ant-alert-info .ant-alert-icon {
+  color: var(--hud-accent) !important;
+}
+
+.hud .ant-alert-message {
+  font-size: 12.5px;
+  color: var(--hud-ink) !important;
+}
+
+.hud .ant-alert-description {
+  font-size: 12px;
+  color: var(--hud-ink-2) !important;
+}
+
+/* 折叠面板 / 上传等零散控件也统一直角细线 */
+.hud .ant-collapse,
+.hud .ant-collapse-item,
+.hud .ant-collapse-header,
+.hud .ant-collapse-content {
+  border-radius: 0 !important;
+  background: transparent !important;
+  border-color: var(--hud-line) !important;
+}
+
+.hud .ant-upload-wrapper .ant-upload-drag {
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.015);
+  border-color: var(--hud-line-2);
+}
+
+.hud .ant-badge-count {
+  border-radius: 0;
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  box-shadow: none;
+}
+/* ------------------------------------------------------------ 收尾修正 */
+
+/* 侧栏宽一点，标签不被截断成"数据…" */
+.app-sider {
+  flex: 0 0 202px !important;
+}
+
+/* antd 的空状态插图在深色 HUD 里太亮，压暗成"淡淡的形" */
+.hud .ant-empty-image {
+  opacity: 0.22;
+  filter: grayscale(1);
+}
+
+.hud .ant-empty-normal {
+  margin: 12px 0;
+}
+
+/* 表格：表头与空状态一律透明，别透出 antd 的浅色底 */
+.hud .ant-table-thead > tr > th,
+.hud .ant-table-tbody > tr > td,
+.hud .ant-table-cell,
+.hud .ant-table-placeholder,
+.hud .ant-table-placeholder > td,
+.hud .ant-table-tbody > tr.ant-table-placeholder:hover > td,
+.hud .ant-table-tbody > tr.ant-table-placeholder > td {
+  background: transparent !important;
+}
+
+.hud .ant-table-placeholder {
+  border-bottom: none !important;
+}
+
+.hud .ant-table-placeholder .ant-empty-description {
+  color: var(--hud-ink-3);
+}
+
+.hud .ant-table-wrapper .ant-table-container {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+/* 摄像头面板底部那排小指标：统一成 5 等分网格，不留孤零零的一格 */
+.camera-stats,
+.camera-stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+/* ------------------------------------------------------------ 动效 */
+
+@keyframes hud-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 面板入场：错位显现 */
+.hud-scope .panel-card {
+  animation: hud-rise 0.4s var(--ease) both;
+}
+
+.hud-scope .panel-card:nth-child(2) {
+  animation-delay: 0.05s;
+}
+
+.hud-scope .panel-card:nth-child(3) {
+  animation-delay: 0.1s;
+}
+
+.hud-scope .panel-card:nth-child(4) {
+  animation-delay: 0.15s;
+}
+
+.result-label,
+.hud-value,
+.donut-value {
+  animation: hud-rise 0.3s var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after,
+  .hud-dot {
+    animation: none !important;
+  }
+  .hud-scope .panel-card {
+    animation: none !important;
+  }
+}

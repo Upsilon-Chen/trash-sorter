@@ -115,7 +115,8 @@ function initialMode(): ThemeMode {
   } catch {
     /* 隐私模式下 localStorage 可能不可用 */
   }
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  // HUD 皮肤是深色优先；浅色保留给投影/打印场景，随时可切
+  return 'dark';
 }
 
 export function ThemeModeProvider({ children }: { children: React.ReactNode }) {
