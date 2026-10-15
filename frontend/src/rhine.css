@@ -57,7 +57,7 @@
   --hud-spore: rgba(18, 183, 106, 0.13);
   --hud-spore-2: rgba(34, 168, 196, 0.16);
   --hud-dotgrid: rgba(11, 26, 20, 0.075);
-  --hud-spot: rgba(18, 183, 106, 0.16);
+  --hud-spot: rgba(18, 183, 106, 0.14);
   --hud-aura-a: rgba(18, 183, 106, 0.16);
   --hud-aura-b: rgba(34, 168, 196, 0.13);
   --hud-shadow: 0 1px 2px rgba(11, 26, 20, 0.04), 0 12px 32px rgba(11, 26, 20, 0.07);
@@ -88,8 +88,8 @@
   --hud-grain: rgba(255, 255, 255, 0.026);
   --hud-spore: rgba(53, 227, 154, 0.17);
   --hud-spore-2: rgba(79, 214, 232, 0.21);
-  --hud-dotgrid: rgba(150, 240, 200, 0.13);
-  --hud-spot: rgba(53, 227, 154, 0.22);
+  --hud-dotgrid: rgba(150, 240, 200, 0.20);
+  --hud-spot: rgba(53, 227, 154, 0.12);
   --hud-aura-a: rgba(53, 227, 154, 0.13);
   --hud-aura-b: rgba(79, 214, 232, 0.10);
   --hud-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 36px rgba(0, 0, 0, 0.42);
@@ -1382,9 +1382,9 @@ body::after {
   position: absolute;
   left: 0;
   top: 0;
-  width: 820px;
-  height: 820px;
-  margin: -410px 0 0 -410px;
+  width: 560px;
+  height: 560px;
+  margin: -280px 0 0 -280px;
   border-radius: 50%;
   background: radial-gradient(circle, var(--hud-spot) 0%, transparent 68%);
   will-change: transform;
@@ -1505,16 +1505,16 @@ body::after {
 }
 
 [data-theme='dark'] .amb-grid {
-  background-image: radial-gradient(circle, var(--hud-dotgrid) 1.35px, transparent 1.65px);
+  background-image: radial-gradient(circle, var(--hud-dotgrid) 1.5px, transparent 1.8px);
 }
 
 /* 跟手光晕再提一档：中心更亮、边缘更柔 */
 .amb-spot {
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--hud-accent) 26%, transparent) 0%,
-    var(--hud-spot) 32%,
-    transparent 72%
+    color-mix(in srgb, var(--hud-accent) 16%, transparent) 0%,
+    var(--hud-spot) 34%,
+    transparent 74%
   );
 }
 
