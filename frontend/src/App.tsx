@@ -19,7 +19,6 @@ import SerialPanel, { type SerialLogEntry } from './components/SerialPanel';
 import {
   errorText,
   getNetworkInfo,
-  requestState,
   startDetection,
   stopDetection,
   trashSocket,
