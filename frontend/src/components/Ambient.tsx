@@ -7,7 +7,7 @@
  *   1. 跟手光晕   一大团生命绿→青的柔光跟着鼠标走（带缓动，不是硬跟）
  *   2. 极光漂移   两层大半径柔光缓慢游移（24~30s，看得见但不抢戏）
  *   3. 浮游孢子   两层不同速度/大小的点阵向相反方向漂，形成纵深
- *   4. 点阵底纹   极淡的科技点阵，给"科技"那一面兜底
+ *   4. 点阵行波   逐点计算相位的 canvas 点阵，从左下往右上推进（DotWave.tsx）
  *   5. 微倾斜     整页随鼠标做 ≤0.35° 的视差，产生"一层层浮着"的错觉
  *
  * 分寸控制：
@@ -18,6 +18,8 @@
  */
 
 import { useEffect, useRef } from 'react';
+
+import DotWave from './DotWave';
 
 /** 光晕位置：直接跟手（不做插值），要的就是"无缝" */
 const SPOT_DIRECT = true;
@@ -107,7 +109,7 @@ export default function Ambient() {
     <div className="ambient" aria-hidden="true">
       <div className="amb-aurora" />
       <div className="amb-spores" />
-      <div className="amb-grid" />
+      <DotWave />
       <div className="amb-spot-wrap">
         <div className="amb-spot" ref={spotRef} />
       </div>
