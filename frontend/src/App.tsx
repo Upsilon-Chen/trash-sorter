@@ -46,6 +46,8 @@ type PageKey = 'dashboard' | 'annotate';
 export default function App() {
   const { message } = AntApp.useApp();
   const { mode: themeMode, toggle: toggleTheme } = useThemeMode();
+  // 稳定引用：配合子组件的 memo，避免 WS 推送把整页重渲染
+  const requestState = useCallback(requestState, []);
 
   const [page, setPage] = useState<PageKey>('dashboard');
   // 局域网共享地址（给另一台电脑的标注员用）
@@ -277,7 +279,7 @@ export default function App() {
                 <Tag>共享：待构建前端</Tag>
               </Tooltip>
             )}
-            <Button size="small" icon={<SyncOutlined />} onClick={() => requestState()}>
+            <Button size="small" icon={<SyncOutlined />} onClick={requestState}>
               同步状态
             </Button>
             <Tooltip
@@ -349,7 +351,7 @@ export default function App() {
                   <CameraPanel
                     cameraState={cameraState}
                     onCameraState={setCameraState}
-                    onStateRefresh={() => requestState()}
+                    onStateRefresh={requestState}
                     classes={classes}
                   />
 
@@ -369,14 +371,14 @@ export default function App() {
                     confidence={confidence}
                     onConfidenceChange={setConfidence}
                     detectionRunning={running}
-                    onStateRefresh={() => requestState()}
+                    onStateRefresh={requestState}
                   />
                   <SerialPanel
                     serialState={serialState}
                     onSerialState={setSerialState}
                     classes={classes}
                     log={serialLog}
-                    onStateRefresh={() => requestState()}
+                    onStateRefresh={requestState}
                   />
                 </Space>
               </Col>
@@ -385,7 +387,7 @@ export default function App() {
             <AnnotatePanel
               cameraState={cameraState}
               onCameraState={setCameraState}
-              onStateRefresh={() => requestState()}
+              onStateRefresh={requestState}
             />
           )}
         </main>

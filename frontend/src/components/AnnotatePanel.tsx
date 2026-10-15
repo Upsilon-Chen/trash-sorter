@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   App as AntApp,
   Alert,
@@ -137,7 +137,7 @@ export interface AnnotatePanelProps {
  * 坐标前端用归一化 0~1 存，后端写 YOLO 标签时再乘类别索引，
  * 与 training/data.yaml 的 names 顺序保持一致。
  */
-export default function AnnotatePanel({
+function AnnotatePanel({
   cameraState,
   onCameraState,
   onStateRefresh,
@@ -188,6 +188,8 @@ export default function AnnotatePanel({
   const [augOnlyLabeled, setAugOnlyLabeled] = useState(true);
   const [augBackground, setAugBackground] = useState(false);
   const [augBusy, setAugBusy] = useState(false);
+  // 列表一次最多渲染多少条：1974 张全渲染会产生约 2 万个 DOM 节点，页面会明显卡顿
+  const [listLimit, setListLimit] = useState(80);
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
@@ -1133,6 +1135,16 @@ export default function AnnotatePanel({
             ]}
             style={{ marginBottom: 10 }}
           />
+          {filtered.length > listLimit && (
+            <Button
+              block
+              size="small"
+              onClick={() => setListLimit((value) => value + 200)}
+              style={{ marginBottom: 8 }}
+            >
+              显示更多（还有 {filtered.length - listLimit} 张，已显示 {listLimit}）
+            </Button>
+          )}
           <div className="annotate-list">
             {filtered.length === 0 ? (
               <Empty
@@ -1144,7 +1156,7 @@ export default function AnnotatePanel({
             ) : (
               <List
                 size="small"
-                dataSource={filtered}
+                dataSource={filtered.slice(0, listLimit)}
                 renderItem={(item, itemIndex) => (
                   <List.Item
                     className={`annotate-item${item.name === current ? ' active' : ''}${
@@ -1599,3 +1611,6 @@ export default function AnnotatePanel({
     </Row>
   );
 }
+
+// 用 memo 包一层：控制台每 ~100ms 会推一次识别事件，不包的话这个页面会被反复重渲染
+export default memo(AnnotatePanel);

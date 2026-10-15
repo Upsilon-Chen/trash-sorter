@@ -220,6 +220,14 @@ def tail_log(lines: int = 12) -> str:
         return "(没有日志)"
 
 
+def mark_ui_ready() -> None:
+    """告诉 exe 的启动画面：真实界面已经出现，可以关了。"""
+    try:
+        (LOG_DIR / "ui-ready.flag").write_text("1", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def stop_backend(process: subprocess.Popen | None) -> None:
     """结束后端。先温和 terminate，给它一点时间自己收尾，超时再强杀。"""
     if process is None or process.poll() is not None:
@@ -500,8 +508,10 @@ def open_window(
             stage("正在连接界面&hellip;", 88)
             log("后端就绪，切到主界面")
             window.load_url(url)
+            mark_ui_ready()
         else:
             log("后端没有就绪，窗口显示错误提示")
+            mark_ui_ready()
             window.load_html(
                 SPLASH_HTML.replace("__TITLE__", WINDOW_TITLE)
                 .replace("正在启动后端&hellip;", "后端启动失败")

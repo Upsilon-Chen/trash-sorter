@@ -337,13 +337,26 @@ def main() -> int:
     if job:
         if assign_to_job(job, child.pid):
             log(f"已把界面进程 {child.pid} 加入 Job Object（exe 退出时它会被一起结束）")
-    # PyInstaller 的 --splash 必须显式关闭，否则会一直挂在屏幕上
+    # PyInstaller 的 --splash 必须显式关闭，否则会一直挂在屏幕上。
+    # 但也不能立刻关：界面（WebView 窗口 + 后端就绪）还要几秒才出现，
+    # 所以等 desktop.py 写出 logs/ui-ready.flag（真正切到主界面时）再关。
     try:
         import pyi_splash  # type: ignore[import-not-found]
 
-        pyi_splash.update_text("正在启动界面…")
+        ready_flag = LOG_DIR / "ui-ready.flag"
+        try:
+            ready_flag.unlink()
+        except OSError:
+            pass
+        pyi_splash.update_text("正在启动界面，首次加载模型需要十几秒…")
+        waited = 0.0
+        while waited < 120.0 and not ready_flag.is_file():
+            time.sleep(0.25)
+            waited += 0.25
+            if int(waited) % 5 == 0 and abs(waited - round(waited)) < 0.01:
+                pyi_splash.update_text(f"正在启动界面…已等待 {int(waited)} 秒")
         pyi_splash.close()
-        log("已关闭 exe 启动画面")
+        log(f"已关闭 exe 启动画面（等待 {waited:.1f}s）")
     except Exception:  # noqa: BLE001 - 非 frozen 环境没有这个模块
         pass
 

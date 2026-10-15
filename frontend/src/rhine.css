@@ -54,10 +54,10 @@
   --hud-card: #ffffff;
   --hud-card-top: rgba(255, 255, 255, 0.9);
   --hud-grain: rgba(11, 26, 20, 0.03);
-  --hud-spore: rgba(18, 183, 106, 0.09);
-  --hud-spore-2: rgba(34, 168, 196, 0.11);
-  --hud-dotgrid: rgba(11, 26, 20, 0.045);
-  --hud-spot: rgba(18, 183, 106, 0.09);
+  --hud-spore: rgba(18, 183, 106, 0.13);
+  --hud-spore-2: rgba(34, 168, 196, 0.16);
+  --hud-dotgrid: rgba(11, 26, 20, 0.075);
+  --hud-spot: rgba(18, 183, 106, 0.16);
   --hud-aura-a: rgba(18, 183, 106, 0.16);
   --hud-aura-b: rgba(34, 168, 196, 0.13);
   --hud-shadow: 0 1px 2px rgba(11, 26, 20, 0.04), 0 12px 32px rgba(11, 26, 20, 0.07);
@@ -86,10 +86,10 @@
   --hud-card: #0c1714;
   --hud-card-top: rgba(255, 255, 255, 0.055);
   --hud-grain: rgba(255, 255, 255, 0.026);
-  --hud-spore: rgba(53, 227, 154, 0.10);
-  --hud-spore-2: rgba(79, 214, 232, 0.14);
-  --hud-dotgrid: rgba(150, 240, 200, 0.055);
-  --hud-spot: rgba(53, 227, 154, 0.10);
+  --hud-spore: rgba(53, 227, 154, 0.17);
+  --hud-spore-2: rgba(79, 214, 232, 0.21);
+  --hud-dotgrid: rgba(150, 240, 200, 0.13);
+  --hud-spot: rgba(53, 227, 154, 0.22);
   --hud-aura-a: rgba(53, 227, 154, 0.13);
   --hud-aura-b: rgba(79, 214, 232, 0.10);
   --hud-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 36px rgba(0, 0, 0, 0.42);
@@ -1382,9 +1382,9 @@ body::after {
   position: absolute;
   left: 0;
   top: 0;
-  width: 660px;
-  height: 660px;
-  margin: -330px 0 0 -330px;
+  width: 820px;
+  height: 820px;
+  margin: -410px 0 0 -410px;
   border-radius: 50%;
   background: radial-gradient(circle, var(--hud-spot) 0%, transparent 68%);
   will-change: transform;
@@ -1482,4 +1482,43 @@ body::after {
 /* 标题区可拖动 */
 .brand-mark {
   cursor: default;
+}
+/* 点阵：两层错相位呼吸 → 读起来像波浪扫过（只动 opacity，走 GPU） */
+.amb-grid {
+  animation: amb-grid 60s linear infinite, amb-breathe 6.5s var(--ease-breathe) infinite;
+}
+
+.amb-grid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--hud-dotgrid) 1.1px, transparent 1.4px);
+  background-size: 26px 26px;
+  background-position: 13px 13px;
+  animation: amb-breathe 6.5s var(--ease-breathe) infinite;
+  animation-delay: -3.25s;
+}
+
+@keyframes amb-breathe {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+[data-theme='dark'] .amb-grid {
+  background-image: radial-gradient(circle, var(--hud-dotgrid) 1.35px, transparent 1.65px);
+}
+
+/* 跟手光晕再提一档：中心更亮、边缘更柔 */
+.amb-spot {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--hud-accent) 26%, transparent) 0%,
+    var(--hud-spot) 32%,
+    transparent 72%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .amb-grid,
+  .amb-grid::after { animation: none !important; }
 }
