@@ -337,6 +337,16 @@ def main() -> int:
     if job:
         if assign_to_job(job, child.pid):
             log(f"已把界面进程 {child.pid} 加入 Job Object（exe 退出时它会被一起结束）")
+    # PyInstaller 的 --splash 必须显式关闭，否则会一直挂在屏幕上
+    try:
+        import pyi_splash  # type: ignore[import-not-found]
+
+        pyi_splash.update_text("正在启动界面…")
+        pyi_splash.close()
+        log("已关闭 exe 启动画面")
+    except Exception:  # noqa: BLE001 - 非 frozen 环境没有这个模块
+        pass
+
     code = child.wait()
     log(f"界面进程结束，退出码 {code}")
     if code != 0:

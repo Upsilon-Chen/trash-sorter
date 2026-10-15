@@ -341,9 +341,9 @@ SPLASH_HTML = """<!doctype html>
   body{display:grid;place-items:center}
   .box{width:min(520px,72vw)}
   .bar{height:1px;background:#aaa59a;position:relative;margin:22px 0 12px}
-  .bar i{position:absolute;left:0;top:0;height:1px;background:#9b7247;width:0;
-    animation:go 9s cubic-bezier(.22,.61,.36,1) forwards}
-  @keyframes go{to{width:100%}}
+  .bar i{position:absolute;left:0;top:0;height:1px;background:#35e39a;width:0;
+    transition:width .6s cubic-bezier(.22,1,.36,1)}
+  #pct{margin-top:6px}
   .t{font-size:19px;font-weight:600;letter-spacing:.02em}
   .s{font-family:Consolas,monospace;font-size:10px;letter-spacing:.22em;
     text-transform:uppercase;color:#77756d;margin-top:2px}
@@ -352,15 +352,56 @@ SPLASH_HTML = """<!doctype html>
 </style></head><body><div class="box">
   <div class="t">YOLO 垃圾自动识别分类系统</div>
   <div class="s">Waste Sorting &middot; Vision &rarr; Mapping &rarr; Servo</div>
-  <div class="bar"><i></i></div>
+  <div class="bar"><i id="fill"></i></div>
   <div class="m">
-    <div>正在启动后端&hellip;</div>
+    <div id="stage">正在准备运行环境&hellip;</div>
     <div>加载检测模型与摄像头通常需要 <b>10&ndash;20 秒</b>，请稍候</div>
     <div id="hint">若长时间没有反应，请看 logs/desktop.log</div>
   </div>
-</div></body></html>"""
+</div><script>window.setStage=function(t,p){var s=document.getElementById("stage"),f=document.getElementById("fill"),n=document.getElementById("pct");if(s&&t)s.innerHTML=t;if(f&&p!=null)f.style.width=p+"%";if(n&&p!=null)n.textContent="进度 "+p+"%";};</script></body></html>"""
 
 
+
+
+def _find_window_handle() -> int:
+    """按标题找主窗口句柄（比翻 pywebview 的 native 对象更稳）。"""
+    if not IS_WINDOWS:
+        return 0
+    try:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.FindWindowW.restype = ctypes.c_void_p
+        user32.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+        return int(user32.FindWindowW(None, WINDOW_TITLE) or 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def apply_caption(dark: bool) -> bool:
+    """把系统标题栏染成和界面一致的颜色（Windows 11 的 DWM 属性）。
+
+    为什么不用无边框：无边框窗口在 Windows 上无法拖边缘缩放，实际使用很别扭。
+    保留系统边框 + 染色，既保住缩放，又不违和。
+    """
+    hwnd = _find_window_handle()
+    if not hwnd:
+        log("找不到窗口句柄，跳过标题栏染色")
+        return False
+    try:
+        dwm = ctypes.windll.dwmapi
+        flag = ctypes.c_int(1 if dark else 0)
+        # DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(flag), ctypes.sizeof(flag))
+        # COLORREF 是 0x00BBGGRR：深色 #0B1A14 / 浅色 #F2F6F1
+        caption = ctypes.c_uint(0x00141A0B if dark else 0x00F1F6F2)
+        text = ctypes.c_uint(0x00ECF2E6 if dark else 0x00141A0B)
+        # DWMWA_CAPTION_COLOR = 35 / DWMWA_TEXT_COLOR = 36
+        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption), ctypes.sizeof(caption))
+        dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text), ctypes.sizeof(text))
+        log(f"标题栏配色已应用（dark={dark}）")
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log(f"标题栏染色失败：{exc}")
+        return False
 
 class WindowApi:
     """暴露给前端的窗口控制（无边框窗口用）。
@@ -374,6 +415,10 @@ class WindowApi:
 
     def bind(self, window) -> None:
         self._window = window
+
+    def set_caption(self, dark: bool) -> None:
+        """前端切换明暗主题时同步系统标题栏"""
+        apply_caption(bool(dark))
 
     def minimize(self) -> None:
         if self._window is not None:
@@ -426,22 +471,33 @@ def open_window(
         min_size=(1120, 720),
         background_color="#EAE5E1",
         text_select=True,
-        frameless=True,       # 去掉系统标题栏，改用界面自己的标题区
-        easy_drag=False,      # 不让整窗可拖，避免干扰选文字/拖画布
         js_api=window_api,
     )
 
     window_api.bind(window)
 
+    def stage(text: str, percent: int) -> None:
+        """更新启动页上的文字与进度（页面可能还没就绪，失败就算了）。"""
+        try:
+            window.evaluate_js(
+                'window.setStage && window.setStage(%s, %d)' % (json.dumps(text), percent)
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
     def worker() -> None:
         """后台线程：起后端 → 等就绪 → 把窗口切到真实界面。"""
         assert preparer is not None
+        time.sleep(0.4)
+        apply_caption(dark=os.environ.get("TRASH_SORTER_THEME", "dark") != "light")
+        stage("正在启动后端进程&hellip;", 12)
         try:
             ready = preparer()
         except Exception as exc:  # noqa: BLE001
             log(f"启动后端异常：{type(exc).__name__}: {exc}")
             ready = False
         if ready:
+            stage("正在连接界面&hellip;", 88)
             log("后端就绪，切到主界面")
             window.load_url(url)
         else:

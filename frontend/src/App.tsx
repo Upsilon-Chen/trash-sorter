@@ -11,7 +11,6 @@ import {
 } from '@ant-design/icons';
 
 import Ambient from './components/Ambient';
-import WindowControls from './components/WindowControls';
 import AnnotatePanel from './components/AnnotatePanel';
 import CameraPanel from './components/CameraPanel';
 import ModelPanel from './components/ModelPanel';
@@ -185,24 +184,6 @@ export default function App() {
 
   const classes = useMemo(() => snapshot?.classes ?? {}, [snapshot]);
 
-  /** 无边框窗口：按住标题区拖动（用 screenX - clientX 反推窗口原点，不需要额外 API） */
-  const startWindowDrag = useCallback((event: React.MouseEvent) => {
-    const api = window.pywebview?.api;
-    if (!api) return;
-    const startClientX = event.clientX;
-    const startClientY = event.clientY;
-    const onMove = (native: MouseEvent) => {
-      api.move_to(native.screenX - startClientX, native.screenY - startClientY);
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, []);
-  const canStart = Boolean(cameraState?.opened) && Boolean(modelState?.loaded);
-
   // HUD 状态条上的时钟（每秒刷新一次，只在页头显示，开销可忽略）
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
@@ -211,11 +192,13 @@ export default function App() {
   }, []);
   const clockText = clock.toLocaleTimeString('zh-CN', { hour12: false });
 
+  const canStart = Boolean(cameraState?.opened) && Boolean(modelState?.loaded);
+
   return (
     <div className="app-shell hud">
       <Ambient />
       <header className="app-header">
-        <div className="brand-mark" onMouseDown={startWindowDrag} title="按住可拖动窗口">
+        <div className="brand-mark">
           <div className="brand-logo">♻</div>
           <div className="brand-text">
             <h1 className="brand-title">YOLO 垃圾自动识别分类系统</h1>
@@ -313,7 +296,6 @@ export default function App() {
                 {themeMode === 'dark' ? '浅色' : '深色'}
               </Button>
             </Tooltip>
-            <WindowControls />
           </Space>
 
           <Space size={8}>

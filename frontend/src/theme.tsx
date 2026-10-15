@@ -16,6 +16,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { theme as antdTheme, type ThemeConfig } from 'antd';
 
+import { syncCaption } from './desktop';
+
 export type ThemeMode = 'light' | 'dark';
 
 const STORAGE_KEY = 'trash-sorter-theme';
@@ -126,6 +128,8 @@ export function ThemeModeProvider({ children }: { children: React.ReactNode }) {
     // 交给 styles.css 的 [data-theme] 选择器，同时让滚动条/表单控件跟随
     document.documentElement.dataset.theme = mode;
     document.documentElement.style.colorScheme = mode;
+    // 系统标题栏跟着主题走
+    syncCaption(mode === 'dark');
     try {
       window.localStorage.setItem(STORAGE_KEY, mode);
     } catch {
