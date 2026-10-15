@@ -1,0 +1,80 @@
+{
+  "version": 5,
+  "description": "两层映射表。classes = 模型识别出的 7 个类别 -> 槽位(slot)，键名必须与 training/data.yaml 的 names 完全一致；groups = 4 个物理槽位（舵机云台的 4 个倾倒方向），对应生活垃圾分类四大类：可回收物 / 有害垃圾 / 厨余垃圾（湿垃圾）/ 其他垃圾（干垃圾）。多个类别可以指向同一个 slot（paper 与 plastic 都进 0 号『可回收物』桶）。groups 里的 priority 用于『一帧里同时出现多个不同类别的垃圾』时决定倒哪一个：数字越小越优先（有害垃圾最优先，因为电池/药品混进别的桶危害最大）。改类别/换分组/调优先级只需改本文件与 training/data.yaml 的 names，主流程无需改动。注意：angle 字段仍会随串口协议下发，但当前双舵机固件不使用它（方向由 esp32/src/main.cpp 顶部的方位表决定），保留是为了兼容单舵机机型。",
+  "default": {
+    "slot": 3,
+    "angle": 90,
+    "label_zh": "其他垃圾",
+    "cooldown": null
+  },
+  "groups": {
+    "0": {
+      "slot": 0,
+      "label_zh": "可回收物",
+      "priority": 2,
+      "cooldown": 4.0
+    },
+    "1": {
+      "slot": 1,
+      "label_zh": "有害垃圾",
+      "priority": 0,
+      "cooldown": 4.0
+    },
+    "2": {
+      "slot": 2,
+      "label_zh": "厨余垃圾（湿垃圾）",
+      "priority": 1,
+      "cooldown": 4.0
+    },
+    "3": {
+      "slot": 3,
+      "label_zh": "其他垃圾（干垃圾）",
+      "priority": 3,
+      "cooldown": 4.0
+    }
+  },
+  "classes": {
+    "battery": {
+      "slot": 1,
+      "angle": 90,
+      "label_zh": "电池",
+      "cooldown": null
+    },
+    "mask": {
+      "slot": 3,
+      "angle": 90,
+      "label_zh": "口罩",
+      "cooldown": null
+    },
+    "medicine": {
+      "slot": 1,
+      "angle": 90,
+      "label_zh": "药品",
+      "cooldown": null
+    },
+    "paper": {
+      "slot": 0,
+      "angle": 90,
+      "label_zh": "纸张",
+      "cooldown": null
+    },
+    "peel": {
+      "slot": 2,
+      "angle": 90,
+      "label_zh": "果皮",
+      "cooldown": null
+    },
+    "plastic": {
+      "slot": 0,
+      "angle": 90,
+      "label_zh": "塑料",
+      "cooldown": null
+    },
+    "tableware": {
+      "slot": 3,
+      "angle": 90,
+      "label_zh": "一次性餐具",
+      "cooldown": null
+    }
+  }
+}

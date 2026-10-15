@@ -1,0 +1,107 @@
+# ============================================================
+# YOLO 垃圾自动识别分类系统 - 后端全局配置
+# 修改本文件后重启后端生效（模型/类别热切换走接口，不需要重启）
+# ============================================================
+
+app:
+  host: "0.0.0.0"
+  port: 8000
+  # 前端开发服务器地址，用于 CORS；生产环境按需增删
+  cors_origins:
+    - "http://localhost:5173"
+    - "http://127.0.0.1:5173"
+    - "http://localhost:4173"
+    - "http://127.0.0.1:4173"
+
+camera:
+  # 枚举 0 ~ scan_max_index 号摄像头，能真正读到帧才算可用
+  scan_max_index: 10
+  # auto | dshow | msmf | v4l2 | avfoundation | any
+  backend: "auto"
+  width: 1280
+  height: 720
+  fps: 30
+  buffer_size: 1
+  # 打开设备后丢弃的前若干帧（等自动曝光/白平衡稳定）
+  warmup_frames: 5
+  # 单次读帧失败后的重试次数
+  read_retries: 3
+  # 连续失败多少次后尝试重新打开设备
+  reopen_after_failures: 30
+  # 判定"全黑占位帧"的平均亮度阈值，<=0 表示不检查
+  min_mean_brightness: 0.5
+  # 启动时自动打开的摄像头序号，null 表示不自动打开
+  autostart_index: 0
+  # 看门狗：超过该秒数没有新帧就判定摄像头失效并自动整机重开
+  # （笔记本休眠唤醒、USB 摄像头掉线后最容易出现）
+  stale_frame_seconds: 6.0
+
+model:
+  # 相对 backend/ 目录，或使用绝对路径
+  dir: "models"
+  # 启动时自动加载的模型文件名，null 表示加载扫描到的第一个
+  default: null
+  conf: 0.35
+  iou: 0.45
+  imgsz: 640
+  # auto | cpu | 0 | 1 ...
+  device: "auto"
+  max_det: 20
+  half: false
+  agnostic_nms: false
+  # 模型加载后跑一张空白图预热，提前暴露模型/设备问题
+  warmup: true
+  # 上传模型大小上限（MB）
+  max_upload_mb: 512
+
+serial:
+  baudrate: 115200
+  # 读超时（秒），用于后台读线程阻塞退出
+  timeout: 0.5
+  write_timeout: 1.0
+  # 端口优先级关键字：越靠前优先级越高（大小写不敏感，匹配 device/description/manufacturer）
+  priority_keywords:
+    - "CP210"
+    - "CH340"
+    - "CH910"
+    - "ESP32"
+    - "USB-SERIAL"
+    - "USB SERIAL"
+    - "SILICON LABS"
+    - "WCH"
+  # 启动时自动连接：true 表示自动连优先级最高的端口
+  autoconnect: false
+  # 连接后等待 ESP32 上报 {"status":"ready"} 的超时（秒），超时不视为失败
+  ready_timeout: 3.0
+  # 无匹配端口时，是否允许连接用户指定的任意端口
+  allow_any_port: true
+
+detection:
+  # 推理循环目标帧率（不会阻塞 FastAPI 事件循环）
+  target_fps: 10
+  # 同一类别两次串口下发之间的冷却时间（秒），可被 classes.json 覆盖
+  cooldown_seconds: 3.0
+  # 低于该置信度的结果不参与自动分类
+  min_confidence: 0.35
+  # 检测结果推送间隔（秒），避免 WS 刷屏
+  push_interval: 0.2
+  # 无检测结果时是否也推送空结果
+  push_empty: false
+  # 是否允许自动下发串口（false 时只检测不下发，调试用）
+  sort_enabled: true
+  # 大于该比例（占整幅画面）的检测框直接丢弃，0 表示关闭。
+  # 用途：托盘/桌面被整块误识别成某一类（比如白色纸盘被判成纸张）时兜底。
+  # 真正的垃圾一般只占画面 5%~40%，0.6 是安全起点；误杀大件垃圾就调大。
+  max_box_area: 0.6
+  # 一帧里同时出现多个不同类别的垃圾时怎么办：
+  #   priority   按物理桶优先级倒（见 classes.json 各 group 的 priority，有害垃圾最优先）
+  #   largest    倒画面里最大的那个
+  #   confidence 倒置信度最高的那个
+  #   hold       不下发，提示"一次只能放一件"（零错分，但需要人工介入）
+  # 物理限制：托盘只有"往一个方向倒"这一个动作，一次会把托盘上的东西全部倒进同一个桶，
+  # 所以多个不同类别同时出现时必然有一个会被分错，这个策略只决定"牺牲哪一个"。
+  multi_object: hold
+  # 只有面积占比 >= 该值的目标才参与"多目标"判定（挡住小噪点误触发）
+  multi_min_area: 0.01
+  # 连续多少帧选中同一个目标才真正下发（防止某一帧抖动就倒错）；1 = 关闭确认
+  stable_frames: 3

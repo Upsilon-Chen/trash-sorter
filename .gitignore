@@ -1,0 +1,72 @@
+# ============================================================================
+#  YOLO 垃圾自动识别分类系统 —— Git 忽略规则
+#
+#  原则：仓库只放"源码 + 配置 + 文档"。
+#        模型权重、训练产物、数据集、抓拍图片、构建产物一律不入库。
+# ============================================================================
+
+# ---------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# ---------------------------------------------------------------- 前端
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env.local
+frontend/.env.*.local
+
+# ------------------------------------------------- PlatformIO / ESP32 构建产物
+esp32/.pio/
+esp32/.pioenvs/
+esp32/.piolibdeps/
+esp32/.vscode/
+
+# ---------------------------------------------------------------- 模型权重
+# 训练出来的 .pt / 导出格式都不入库（体积大且可重新训练得到）
+*.pt
+*.pth
+*.onnx
+*.engine
+*.tflite
+*.mlpackage
+# 但 backend/models 目录本身要保留（.gitkeep 在里面）
+!backend/models/.gitkeep
+# 预训练权重 yolov8n.pt 也不入库：train.py 首次运行会自动下载
+# （网络不便时可手动放到 training/ 或 backend/models/ 下）
+
+# ------------------------------------------------------ 训练产物 / 数据集
+# 训练输出（runs/trash/weights、图表、日志）
+training/runs/
+# 从标注页导出的数据集
+training/datasets/*
+!training/datasets/.gitkeep
+training/data-det.yaml
+training/data-captures.yaml
+# 自己抓拍的图片（属于本地数据，且可能拍到私人环境，不要上传）
+training/captures/*
+!training/captures/.gitkeep
+# 外部下载的数据集（只忽略仓库根目录下的 datasets/，不要误伤 training/datasets/）
+trashnet/
+/datasets/
+
+# ---------------------------------------------------------------- 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# ---------------------------------------------------------------- 日志 / 临时
+*.log
+logs/
+temp/
+tmp/
+# 本地调试用的临时目录
+.dsh-*/

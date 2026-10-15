@@ -1,0 +1,43 @@
+# ============================================================
+#  YOLO 垃圾识别数据集配置 —— 生活垃圾分类四大类（7 个识别类别）
+# ============================================================
+#
+#  分类体系（依据用户要求）：
+#
+#        0 paper      纸张        ┐
+#        1 plastic    塑料        ┴─> slot 0  可回收物
+#        2 battery    电池        ┐
+#        3 medicine   药品        ┴─> slot 1  有害垃圾
+#        4 peel       果皮        ──> slot 2  厨余垃圾（湿垃圾）
+#        5 mask       口罩        ┐
+#        6 tableware  一次性餐具   ┴─> slot 3  其他垃圾（干垃圾）
+#
+#  ⚠ 索引顺序必须与标注文件里实际写入的索引完全一致。
+#    本文件是**唯一口径**：backend/services/annotator.py 写标签时读它，
+#    backend/config/classes.json 的键名也按它对齐，train.py 会校验两者一致。
+#    顺序错一位就会整类串桶（例如电池被当成纸张倒进可回收物桶）。
+#
+#  数据集来源：自己抓拍 + 标注页生成
+#    抓拍目录 training/captures/<类别>/   （目录名 = 上面的类别名）
+#    标注页「生成训练数据集」-> training/datasets/captures + training/data-captures.yaml
+#    （data-captures.yaml 与本文内容等价，用哪个都能训练）
+#
+#  注意：旧的 trashnet/ 数据集是 6 类旧体系（cardboard/glass/metal/paper/plastic/trash），
+#        与本文件不再兼容，train.py 会直接拒绝它（类别集合校验不通过）。
+#
+#  路径相对本文件所在目录（training/）解析。
+# ============================================================
+
+train: datasets/captures/train/images
+val: datasets/captures/val/images
+
+nc: 7
+
+names:
+  0: paper
+  1: plastic
+  2: battery
+  3: medicine
+  4: peel
+  5: mask
+  6: tableware

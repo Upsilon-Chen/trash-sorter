@@ -1,0 +1,3 @@
+# 该目录用于存放 YOLO 权重文件（*.pt）。
+# 后端启动/请求 /api/models 时会扫描本目录下的所有 .pt 文件并支持热切换。
+# 例如：backend/models/best.pt、backend/models/trash-v2.pt
