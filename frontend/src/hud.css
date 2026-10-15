@@ -45,6 +45,7 @@
   --hud-glow: 0 0 0 1px rgba(53, 240, 160, 0.35), 0 0 20px rgba(53, 240, 160, 0.20);
   --hud-drop: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.55));
   --hud-track-color: rgba(255, 255, 255, 0.07);
+  --hud-sunken: rgba(0, 0, 0, 0.22);
 }
 
 [data-theme='light'] {
@@ -71,6 +72,7 @@
   --hud-glow: 0 0 0 1px rgba(18, 183, 106, 0.35), 0 6px 18px rgba(18, 183, 106, 0.14);
   --hud-drop: drop-shadow(0 10px 22px rgba(16, 24, 40, 0.10));
   --hud-track-color: rgba(16, 24, 40, 0.07);
+  --hud-sunken: rgba(16, 24, 40, 0.035);
 }
 
 /* ------------------------------------------------------------ 背景与氛围 */
@@ -110,6 +112,10 @@ body::after {
 
 [data-theme='light'] body::after {
   display: none;
+}
+
+[data-theme='light'] .hud .ant-empty-image {
+  opacity: 0.14;
 }
 
 @keyframes hud-scan {
@@ -180,6 +186,8 @@ body::after {
   background: var(--hud-accent-dim);
 }
 
+.hud .brand-text h1,
+.hud .brand-text p,
 .brand-title {
   font-family: var(--hud-display);
   font-size: 17px;
@@ -189,6 +197,7 @@ body::after {
   color: var(--hud-ink);
 }
 
+.hud .brand-text p.brand-sub,
 .brand-sub {
   font-family: var(--hud-mono);
   font-size: 10px;
@@ -985,7 +994,7 @@ body::after {
 
 .history-box,
 .serial-log {
-  background: rgba(0, 0, 0, 0.18) !important;
+  background: var(--hud-sunken) !important;
   border: 1px solid var(--hud-line) !important;
   border-radius: 0 !important;
 }
