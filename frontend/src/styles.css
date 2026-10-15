@@ -294,6 +294,26 @@ body {
   text-decoration: line-through;
 }
 
+/* 抓拍列表的自动刷新设置条（可隐藏） */
+.auto-refresh-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 3px 4px 3px 8px;
+  font-size: 12px;
+  background: #f7faf9;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+
+.auto-refresh-count {
+  min-width: 26px;
+  font-size: 12px;
+  color: var(--brand-dark);
+}
+
 .annotate-name {
   max-width: 148px;
   font-size: 12px;

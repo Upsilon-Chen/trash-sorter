@@ -18,8 +18,10 @@ import {
 } from 'antd';
 import {
   CameraOutlined,
+  ClockCircleOutlined,
   DeleteOutlined,
   ExperimentOutlined,
+  EyeInvisibleOutlined,
   ReloadOutlined,
   SaveOutlined,
   StepBackwardOutlined,
@@ -80,6 +82,17 @@ interface Interaction {
 
 const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
 const MIN_BOX = 0.01;
+
+/** 列表自动刷新的可选间隔（秒）；0 = 关闭 */
+const AUTO_REFRESH_OPTIONS = [
+  { value: 0, label: '关闭' },
+  { value: 5, label: '5 秒' },
+  { value: 10, label: '10 秒' },
+  { value: 30, label: '30 秒' },
+  { value: 60, label: '1 分钟' },
+];
+const AUTO_REFRESH_VALUES = AUTO_REFRESH_OPTIONS.map((item) => item.value);
+const AUTO_REFRESH_KEY = 'trash-sorter-autorefresh';
 
 /** 平移：保持宽高不变，且不越出画面 */
 function shiftBox(box: AnnotateBox, dx: number, dy: number): AnnotateBox {
@@ -154,6 +167,13 @@ export default function AnnotatePanel({
   // 在标注页直接抓拍
   const [captureClass, setCaptureClass] = useState('background');
   const [capturing, setCapturing] = useState(false);
+  // 抓拍列表自动刷新：间隔（秒，0=关闭）、设置条是否显示、用于倒计时的秒表
+  const [autoRefresh, setAutoRefresh] = useState<number>(() => {
+    const saved = Number(window.localStorage.getItem(AUTO_REFRESH_KEY) ?? 0);
+    return AUTO_REFRESH_VALUES.includes(saved) ? saved : 0;
+  });
+  const [autoRefreshBar, setAutoRefreshBar] = useState(true);
+  const [autoTick, setAutoTick] = useState(0);
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
@@ -228,6 +248,31 @@ export default function AnnotatePanel({
   useEffect(() => {
     void refresh(true);
   }, [refresh]);
+
+  // 自动刷新：1 秒一跳的秒表，每满一个间隔就静默重扫一次列表
+  useEffect(() => {
+    if (!autoRefresh) {
+      setAutoTick(0);
+      return;
+    }
+    const timer = window.setInterval(() => setAutoTick((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh]);
+
+  useEffect(() => {
+    if (!autoRefresh || autoTick === 0) return;
+    if (autoTick % autoRefresh !== 0) return;
+    // 正在保存/抓拍/自动标注时不打扰，等下一个周期
+    if (saving || capturing || autoBusy) return;
+    void refresh(true);
+  }, [autoBusy, autoRefresh, autoTick, capturing, refresh, saving]);
+
+  // 记住选择（下次打开还是这个间隔）
+  useEffect(() => {
+    window.localStorage.setItem(AUTO_REFRESH_KEY, String(autoRefresh));
+  }, [autoRefresh]);
+
+  const autoSecondsLeft = autoRefresh ? autoRefresh - (autoTick % autoRefresh) : 0;
 
   /** 静默刷新列表并返回最新数据（保存后用来找下一张未标注） */
   const refreshImages = useCallback(async (): Promise<AnnotateImageItem[]> => {
@@ -826,11 +871,64 @@ export default function AnnotatePanel({
             </Space>
           }
           extra={
-            <Tooltip title="重新扫描 training/captures">
-              <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void refresh()} />
-            </Tooltip>
+            <Space size={4}>
+              {/* 自动刷新开着时，即使把设置条隐藏了，这里也能看到当前间隔 */}
+              {autoRefresh > 0 && (
+                <Tooltip title={`每 ${autoRefresh} 秒自动重新扫描一次，还有 ${autoSecondsLeft} 秒`}>
+                  <Tag color="blue" className="mono">
+                    自动 {autoRefresh}s
+                  </Tag>
+                </Tooltip>
+              )}
+              <Tooltip
+                title={
+                  autoRefreshBar
+                    ? '隐藏自动刷新设置（设置仍在生效）'
+                    : '显示自动刷新设置'
+                }
+              >
+                <Button
+                  size="small"
+                  type={autoRefresh > 0 ? 'primary' : 'default'}
+                  icon={<ClockCircleOutlined />}
+                  onClick={() => setAutoRefreshBar((value) => !value)}
+                />
+              </Tooltip>
+              <Tooltip title="重新扫描 training/captures">
+                <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void refresh()} />
+              </Tooltip>
+            </Space>
           }
         >
+          {autoRefreshBar && (
+            <div className="auto-refresh-bar">
+              <Space size={6}>
+                <Tooltip title="按设定的间隔自动重新扫描抓拍目录：另一位标注员刚抓拍的图会自动出现在列表里">
+                  <span className="muted">自动刷新</span>
+                </Tooltip>
+                <Select
+                  size="small"
+                  style={{ width: 92 }}
+                  value={autoRefresh}
+                  onChange={(value: number) => setAutoRefresh(value)}
+                  options={AUTO_REFRESH_OPTIONS}
+                />
+                {autoRefresh > 0 && (
+                  <span className="muted mono auto-refresh-count" title="下次刷新倒计时">
+                    {autoSecondsLeft}s
+                  </span>
+                )}
+              </Space>
+              <Tooltip title="隐藏这条设置（自动刷新继续生效；点标题栏的时钟图标可再显示）">
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<EyeInvisibleOutlined />}
+                  onClick={() => setAutoRefreshBar(false)}
+                />
+              </Tooltip>
+            </div>
+          )}
           <Segmented
             block
             value={filter}
