@@ -1328,9 +1328,17 @@ body::after {
   overflow: hidden;
 }
 
-.ambient > * {
+.amb-aurora,
+.amb-spores {
   position: absolute;
   inset: -20%;
+}
+
+/* 点阵 canvas 与光晕容器必须严格贴合视口（之前被 inset:-20% 一起偏移了） */
+.amb-spot-wrap,
+.amb-wave {
+  position: absolute;
+  inset: 0;
 }
 
 /* 极光：两层大半径柔光缓慢游移（28s，看得见但不抢戏） */
@@ -1380,12 +1388,15 @@ body::after {
   margin: -190px 0 0 -190px;
   border-radius: 50%;
   filter: blur(26px);
+  /* 严格单调递减 0.20 → 0.13 → 0.07 → 0.03 → 0.01 → 0，消除中间的暗环 */
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--hud-accent) 10%, transparent) 0%,
-    color-mix(in srgb, var(--hud-accent) 6%, transparent) 22%,
-    var(--hud-spot) 46%,
-    transparent 78%
+    color-mix(in srgb, var(--hud-accent) 20%, transparent) 0%,
+    color-mix(in srgb, var(--hud-accent) 13%, transparent) 16%,
+    color-mix(in srgb, var(--hud-accent) 7%, transparent) 34%,
+    color-mix(in srgb, var(--hud-accent) 3%, transparent) 56%,
+    color-mix(in srgb, var(--hud-accent) 1%, transparent) 78%,
+    transparent 100%
   );
   will-change: transform;
 }
@@ -1491,12 +1502,15 @@ body::after {
   margin: -190px 0 0 -190px;
   border-radius: 50%;
   filter: blur(26px);
+  /* 严格单调递减 0.20 → 0.13 → 0.07 → 0.03 → 0.01 → 0，消除中间的暗环 */
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--hud-accent) 10%, transparent) 0%,
-    color-mix(in srgb, var(--hud-accent) 6%, transparent) 22%,
-    var(--hud-spot) 46%,
-    transparent 78%
+    color-mix(in srgb, var(--hud-accent) 20%, transparent) 0%,
+    color-mix(in srgb, var(--hud-accent) 13%, transparent) 16%,
+    color-mix(in srgb, var(--hud-accent) 7%, transparent) 34%,
+    color-mix(in srgb, var(--hud-accent) 3%, transparent) 56%,
+    color-mix(in srgb, var(--hud-accent) 1%, transparent) 78%,
+    transparent 100%
   );
   will-change: transform;
 }
