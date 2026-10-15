@@ -20,6 +20,7 @@ import { ThemeModeProvider, useThemeMode } from './theme';
 import './styles.css';
 import './theme.css';
 import './hud.css';
+import './rhine.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

@@ -342,7 +342,7 @@ export default function App() {
         <main className="app-main hud-scope">
           {page === 'dashboard' ? (
             <Row gutter={[16, 16]}>
-              <Col xs={24} xl={13}>
+              <Col xs={24} xl={14}>
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <CameraPanel
                     cameraState={cameraState}
@@ -350,17 +350,17 @@ export default function App() {
                     onStateRefresh={() => requestState()}
                     classes={classes}
                   />
-                </Space>
-              </Col>
-              <Col xs={24} xl={11}>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+
                   <ResultPanel
                     detection={detection}
                     snapshot={snapshot}
                     confidence={confidence}
                     history={history}
                   />
-
+                </Space>
+              </Col>
+              <Col xs={24} xl={10}>
+                <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <ModelPanel
                     modelState={modelState}
                     onModelState={setModelState}

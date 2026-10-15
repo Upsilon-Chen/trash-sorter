@@ -58,6 +58,7 @@ def repo_root() -> Path:
 ROOT = repo_root()
 LOG_DIR = ROOT / "logs"
 LOG_FILE = LOG_DIR / "launcher.log"
+CACHE_FILE = LOG_DIR / "python-path.txt"
 
 
 def log(message: str) -> None:
@@ -125,7 +126,14 @@ def candidate_pythons() -> list[str]:
 def python_with_deps() -> tuple[str | None, list[str]]:
     """挑第一个依赖齐全的解释器；返回 (解释器, 试过的列表)。"""
     tried: list[str] = []
-    for python in candidate_pythons():
+    cached = ''
+    try:
+        if CACHE_FILE.is_file():
+            cached = CACHE_FILE.read_text(encoding='utf-8').strip()
+    except OSError:
+        cached = ''
+    # 上次成功过的解释器优先，省掉重复探测（只查 find_spec 也要 0.5~1 秒）
+    for python in ([cached] if cached else []) + candidate_pythons():
         tried.append(python)
         try:
             result = subprocess.run(
@@ -137,6 +145,10 @@ def python_with_deps() -> tuple[str | None, list[str]]:
         except (OSError, subprocess.TimeoutExpired):
             continue
         if result.returncode == 0:
+            try:
+                CACHE_FILE.write_text(python, encoding='utf-8')
+            except OSError:
+                pass
             log(f"选定解释器：{python}")
             return python, tried
     return None, tried

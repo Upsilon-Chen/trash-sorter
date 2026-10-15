@@ -326,7 +326,7 @@ def start_parent_watchdog(process: subprocess.Popen | None) -> list[int]:
             #   比如任务管理器里结束任务 —— 另一个也会跟着收尾，所以任一消失都该退。）
             if not all(_pid_alive(pid) for pid in pids):
                 log(f"启动器进程 {pids} 已有退出，界面自动关闭")
-                stop_backend(process)
+                stop_backend(holder[0])
                 os._exit(0)
 
     threading.Thread(target=watch, name="launcher-watchdog", daemon=True).start()
@@ -334,20 +334,78 @@ def start_parent_watchdog(process: subprocess.Popen | None) -> list[int]:
     return pids
 
 
-def open_window(port: int, selftest: int | None, process: subprocess.Popen | None = None) -> str:
-    """打开原生窗口，返回实际使用的后端名（edgechromium / fallback…）。"""
+SPLASH_HTML = """<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>__TITLE__</title><style>
+  html,body{margin:0;height:100%;background:#eae5e1;color:#080a08;
+    font-family:'MiSans','PingFang SC','Microsoft YaHei',system-ui,sans-serif}
+  body{display:grid;place-items:center}
+  .box{width:min(520px,72vw)}
+  .bar{height:1px;background:#aaa59a;position:relative;margin:22px 0 12px}
+  .bar i{position:absolute;left:0;top:0;height:1px;background:#9b7247;width:0;
+    animation:go 9s cubic-bezier(.22,.61,.36,1) forwards}
+  @keyframes go{to{width:100%}}
+  .t{font-size:19px;font-weight:600;letter-spacing:.02em}
+  .s{font-family:Consolas,monospace;font-size:10px;letter-spacing:.22em;
+    text-transform:uppercase;color:#77756d;margin-top:2px}
+  .m{font-family:Consolas,monospace;font-size:11px;color:#77756d;letter-spacing:.08em;line-height:1.9}
+  .m b{color:#080a08;font-weight:400}
+</style></head><body><div class="box">
+  <div class="t">YOLO 垃圾自动识别分类系统</div>
+  <div class="s">Waste Sorting &middot; Vision &rarr; Mapping &rarr; Servo</div>
+  <div class="bar"><i></i></div>
+  <div class="m">
+    <div>正在启动后端&hellip;</div>
+    <div>加载检测模型与摄像头通常需要 <b>10&ndash;20 秒</b>，请稍候</div>
+    <div id="hint">若长时间没有反应，请看 logs/desktop.log</div>
+  </div>
+</div></body></html>"""
+
+
+def open_window(
+    port: int,
+    selftest: int | None,
+    process: subprocess.Popen | None = None,
+    preparer: "Callable[[], bool] | None" = None,
+) -> str:
+    """打开原生窗口，返回实际使用的后端名。
+
+    关键体验改动：**窗口立刻出现**（先显示一张启动页），后端在后台线程里起来，
+    就绪后再把窗口切到真实界面。以前是"等 15~25 秒才弹窗"，看起来像卡死了。
+    """
     import webview  # 延迟导入：没有 pywebview 时也能走 --check / --browser
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    url = f"http://127.0.0.1:{port}/"
     window = webview.create_window(
         WINDOW_TITLE,
-        f"http://127.0.0.1:{port}/",
+        url=url if preparer is None else None,
+        html=None if preparer is None else SPLASH_HTML.replace("__TITLE__", WINDOW_TITLE),
         width=1440,
         height=920,
         min_size=(1120, 720),
-        background_color="#0B1418",
+        background_color="#EAE5E1",
         text_select=True,
     )
+
+    def worker() -> None:
+        """后台线程：起后端 → 等就绪 → 把窗口切到真实界面。"""
+        assert preparer is not None
+        try:
+            ready = preparer()
+        except Exception as exc:  # noqa: BLE001
+            log(f"启动后端异常：{type(exc).__name__}: {exc}")
+            ready = False
+        if ready:
+            log("后端就绪，切到主界面")
+            window.load_url(url)
+        else:
+            log("后端没有就绪，窗口显示错误提示")
+            window.load_html(
+                SPLASH_HTML.replace("__TITLE__", WINDOW_TITLE)
+                .replace("正在启动后端&hellip;", "后端启动失败")
+                .replace("加载检测模型与摄像头通常需要 <b>10&ndash;20 秒</b>，请稍候",
+                         "日志最后几行：<br>" + "<br>".join(tail_log(6)).replace("\n", "<br>"))
+            )
 
     if selftest:
         def auto_close() -> None:
@@ -362,7 +420,7 @@ def open_window(port: int, selftest: int | None, process: subprocess.Popen | Non
             """自检专用保险：窗口没按时关就收拾干净再硬退，别把会话/后端挂住。"""
             time.sleep(float(selftest) + 15)
             log("自检：窗口没有按时关闭，强制退出")
-            stop_backend(process)
+            stop_backend(holder[0])
             os._exit(9)
 
         threading.Thread(target=auto_close, daemon=True).start()
@@ -378,11 +436,11 @@ def open_window(port: int, selftest: int | None, process: subprocess.Popen | Non
 
     # 优先强制 EdgeChromium（WebView2）；万一不可用，再退回 pywebview 自选后端
     try:
-        webview.start(gui="edgechromium", **start_kwargs)
+        webview.start(worker if preparer is not None else None, gui="edgechromium", **start_kwargs)
         return "edgechromium"
     except Exception as exc:  # noqa: BLE001 - 后端初始化失败就降级
         log(f"WebView2 后端启动失败（{type(exc).__name__}: {exc}），改用默认后端重试")
-        webview.start(**start_kwargs)
+        webview.start(worker if preparer is not None else None, **start_kwargs)
         return "default"
 
 
@@ -410,7 +468,13 @@ def main() -> int:
         return 2
 
     existing = None if args.force_new else find_existing()
-    process: subprocess.Popen | None = None
+    holder: list[subprocess.Popen | None] = [None]
+
+    def boot(current_port: int) -> dict | None:
+        """起后端并等就绪（在窗口路径里由后台线程调用，所以窗口能先弹出来）。"""
+        holder[0] = start_backend(current_port)
+        return wait_ready(current_port, holder[0])
+
     if existing:
         port, info = existing
         log(f"检测到已在运行的实例（端口 {port}），直接复用它，不再起第二个后端")
@@ -429,36 +493,44 @@ def main() -> int:
             return 3
         if port != args.port:
             log(f"端口 {args.port} 被占用，改用 {port}")
-        process = start_backend(port)
-        info = wait_ready(port, process)
-        if info is None:
-            stop_backend(process)
-            message_box(
-                "后端启动失败，界面没有打开。\n\n"
-                f"日志最后几行（完整日志见 logs/desktop.log）：\n{tail_log(8)}",
-                error=True,
-            )
-            return 4
+        # --check / --browser / 无窗口路径需要同步等就绪；窗口路径交给 preparer
+        if args.check or args.browser or sys.platform != "win32":
+            info = boot(port)
+            if info is None:
+                stop_backend(holder[0])
+                message_box(
+                    "后端启动失败。\n\n"
+                    f"日志最后几行（完整日志见 logs/desktop.log）：\n{tail_log(8)}",
+                    error=True,
+                )
+                return 4
+        else:
+            info = {"urls": []}
 
     urls = "、".join(info.get("urls", [])[:3]) if isinstance(info, dict) else ""
     log(f"可用地址：{urls}")
 
     if args.check:
         print(f"  就绪：http://127.0.0.1:{port}/    局域网：{urls}")
-        stop_backend(process)
+        stop_backend(holder[0])
         return 0
 
     if args.browser:
         open_in_browser_window(port, keep_alive=True)
-        stop_backend(process)
+        stop_backend(holder[0])
         return 0
 
+    # 已经就绪（复用实例或已同步启动）→ 直接开界面；否则先出窗口再后台启动
+    preparer = None if existing else (lambda: boot(port) is not None)
+
     try:
-        start_parent_watchdog(process)
-        backend_used = open_window(port, args.selftest, process)
+        start_parent_watchdog(holder[0])
+        backend_used = open_window(port, args.selftest, holder[0], preparer)
         log(f"窗口已关闭（后端 {backend_used}）")
     except ImportError:
         log("没有 pywebview，改用 Edge --app 模式")
+        if holder[0] is None and preparer is not None:
+            boot(port)
         if not open_in_browser_window(port, keep_alive=True):
             message_box(
                 "没有安装 pywebview，也没找到 Edge，无法打开窗口。\n\n"
@@ -466,18 +538,18 @@ def main() -> int:
                 "或直接用浏览器打开 http://127.0.0.1:%d/" % port,
                 error=True,
             )
-            stop_backend(process)
+            stop_backend(holder[0])
             return 5
     except Exception as exc:  # noqa: BLE001 - 窗口阶段任何异常都不能让后端变孤儿
         log(f"打开窗口失败：{type(exc).__name__}: {exc}")
         message_box(f"打开窗口失败：{exc}\n\n日志：logs/desktop.log", error=True)
         if not open_in_browser_window(port, keep_alive=True):
-            stop_backend(process)
+            stop_backend(holder[0])
             return 6
 
     # 只有"窗口真关了"才关后端；复用已有实例时不能去关别人的进程
-    if process is not None:
-        stop_backend(process)
+    if holder[0] is not None:
+        stop_backend(holder[0])
     else:
         log("窗口已关闭（后端是之前的实例，保持运行）")
     return 0

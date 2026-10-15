@@ -115,8 +115,8 @@ function initialMode(): ThemeMode {
   } catch {
     /* 隐私模式下 localStorage 可能不可用 */
   }
-  // HUD 皮肤是深色优先；浅色保留给投影/打印场景，随时可切
-  return 'dark';
+  // 基准是参考项目的暖灰白浅色；暗色（石墨）随时可切
+  return 'light';
 }
 
 export function ThemeModeProvider({ children }: { children: React.ReactNode }) {
