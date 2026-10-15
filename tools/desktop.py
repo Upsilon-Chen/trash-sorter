@@ -42,7 +42,31 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+def _resolve_repo_root() -> Path:
+    """找到项目根目录（含 backend/main.py 的那一层）。
+
+    为什么要找而不是直接 `parents[1]`：冻成 exe 后，启动器可能会从解压出来的临时目录
+    运行这个脚本，靠 `__file__` 推算会算错。启动器会把真实根目录通过
+    `TRASH_SORTER_ROOT` 传进来，这里再兜底几个候选位置。
+    """
+    candidates: list[Path] = []
+    env_root = os.environ.get("TRASH_SORTER_ROOT")
+    if env_root:
+        candidates.append(Path(env_root))
+    candidates.append(Path(__file__).resolve().parents[1])
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable).resolve().parent)
+    candidates.append(Path.cwd())
+    for candidate in candidates:
+        try:
+            if (candidate / "backend" / "main.py").is_file():
+                return candidate.resolve()
+        except OSError:
+            continue
+    return candidates[0].resolve()
+
+
+REPO_ROOT = _resolve_repo_root()
 LOG_DIR = REPO_ROOT / "logs"
 LOG_FILE = LOG_DIR / "desktop.log"
 ICON_FILE = REPO_ROOT / "assets" / "app.ico"
@@ -119,14 +143,19 @@ def find_existing() -> tuple[int, dict] | None:
 
 
 def check_imports() -> list[str]:
-    """后端依赖是否齐全（route ① 用的是本机 Python 环境，这是最常见的失败原因）。"""
-    import importlib
+    """后端依赖是否齐全（route ① 用的是本机 Python 环境，这是最常见的失败原因）。
+
+    注意：这里只查"包在不在"（`find_spec`），**不能真的 import** ——
+    `import ultralytics` 会连带加载 torch，白白多等 8~10 秒启动时间。
+    """
+    import importlib.util
 
     missing = []
     for name in ("fastapi", "uvicorn", "cv2", "ultralytics", "serial", "yaml", "numpy"):
         try:
-            importlib.import_module(name)
-        except Exception:  # noqa: BLE001 - 任何导入失败都算缺失
+            if importlib.util.find_spec(name) is None:
+                missing.append(name)
+        except (ImportError, ValueError):
             missing.append(name)
     return missing
 
@@ -142,6 +171,8 @@ def start_backend(port: int) -> subprocess.Popen:
     # 告诉后端真实端口：/api/network 用它拼局域网地址（否则 8000 被占换端口后，
     # 发给另一台电脑的网址是错的）
     env["TRASH_SORTER_PORT"] = str(port)
+    # 让后端看护启动器：启动器被强杀/崩溃时，后端自己退出，不会留着占摄像头
+    env["TRASH_SORTER_PARENT_PID"] = str(os.getpid())
     command = [
         sys.executable,
         "-m",
@@ -242,6 +273,65 @@ def open_in_browser_window(port: int, keep_alive: bool) -> bool:
     if keep_alive:
         process.wait()
     return True
+
+
+def _pid_alive(pid: int) -> bool:
+    """进程还活着吗。"""
+    if pid <= 0:
+        return False
+    if IS_WINDOWS:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        SYNCHRONIZE = 0x00100000
+        WAIT_TIMEOUT = 0x00000102
+        handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        if not handle:
+            return False
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+        finally:
+            kernel32.CloseHandle(handle)
+    try:  # pragma: no cover
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def start_parent_watchdog(process: subprocess.Popen | None) -> list[int]:
+    """看护启动器：它一退出，界面就自己关掉（顺带结束后端）。
+
+    为什么需要：只有"关窗口"这条正常路径会主动收尾。如果启动器被任务管理器强杀、
+    崩了，或者 `--onefile` 打包出来的引导进程被杀掉，界面就会变成没人管的孤儿窗口。
+    启动器会把要盯的 PID 列表通过 `TRASH_SORTER_PARENT_PIDS` 传进来 ——
+    **只有它主动传了才盯**，所以 `启动.bat`（直接跑）这条路径不受影响。
+    """
+    raw = os.environ.get("TRASH_SORTER_PARENT_PIDS") or os.environ.get("TRASH_SORTER_PARENT_PID") or ""
+    pids: list[int] = []
+    for chunk in raw.replace(";", ",").split(","):
+        chunk = chunk.strip()
+        if chunk.isdigit():
+            pids.append(int(chunk))
+    if not pids:
+        return []
+    # 自己不算
+    pids = [pid for pid in pids if pid != os.getpid()]
+    if not pids:
+        return []
+
+    def watch() -> None:
+        while True:
+            time.sleep(2.0)
+            # 语义：**只要有一个被看守的进程消失**，就认为启动器已经没了。
+            # （--onefile 的 exe 有"引导进程 + 应用进程"两个，杀掉任意一个 ——
+            #   比如任务管理器里结束任务 —— 另一个也会跟着收尾，所以任一消失都该退。）
+            if not all(_pid_alive(pid) for pid in pids):
+                log(f"启动器进程 {pids} 已有退出，界面自动关闭")
+                stop_backend(process)
+                os._exit(0)
+
+    threading.Thread(target=watch, name="launcher-watchdog", daemon=True).start()
+    log(f"已启用启动器看护：盯着 PID {pids}")
+    return pids
 
 
 def open_window(port: int, selftest: int | None, process: subprocess.Popen | None = None) -> str:
@@ -364,6 +454,7 @@ def main() -> int:
         return 0
 
     try:
+        start_parent_watchdog(process)
         backend_used = open_window(port, args.selftest, process)
         log(f"窗口已关闭（后端 {backend_used}）")
     except ImportError:
@@ -393,4 +484,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException as exc:  # noqa: BLE001
+        # 无控制台时异常会被静默吞掉，表现成"双击没反应"，所以必须弹窗
+        import traceback
+
+        log(f"启动器异常：{type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+        message_box(f"启动失败：{type(exc).__name__}: {exc}\n\n日志：logs/desktop.log", error=True)
+        raise SystemExit(1) from exc

@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import faulthandler
 import json
 import logging
@@ -37,6 +38,8 @@ import os
 import re
 import socket
 import sys
+import threading
+import time
 from datetime import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -387,12 +390,90 @@ async def supervise(services: AppServices) -> None:
 # ---------------------------------------------------------------------------
 # 生命周期
 # ---------------------------------------------------------------------------
+def quiet_client_disconnects() -> None:
+    """把"客户端被强杀"造成的 asyncio 噪音降下来。
+
+    Windows 上 WebSocket / MJPEG 客户端突然消失时，Proactor 传输层会抛
+    ConnectionResetError(WinError 10054) 并打一整段 ERROR 堆栈 —— 看着吓人，
+    其实是正常现象（关窗口、强杀进程都会这样）。这里只过滤这一类，其它异常照旧上报。
+    """
+    loop = asyncio.get_running_loop()
+    default_handler = loop.get_exception_handler()
+
+    def handler(current_loop: asyncio.AbstractEventLoop, context: dict) -> None:
+        exception = context.get("exception")
+        handle = str(context.get("handle") or "")
+        noisy = isinstance(exception, (ConnectionResetError, ConnectionAbortedError)) or "connection_lost" in handle
+        if noisy:
+            LOGGER.debug("忽略客户端断开噪音：%s", exception or handle)
+            return
+        if default_handler is not None:
+            default_handler(current_loop, context)
+        else:
+            current_loop.default_exception_handler(context)
+
+    loop.set_exception_handler(handler)
+
+
+def start_parent_watchdog() -> None:
+    """启动器把它的 PID 通过环境变量传进来；启动器一消失，后端也跟着退出。
+
+    为什么需要：正常关窗时启动器会主动结束后端（`tools/desktop.py`），但如果启动器
+    被任务管理器强杀、自己崩了、或者调试用的控制台被关掉，后端就会变成**孤儿进程**
+    —— 一直占着摄像头，下次启动就打不开了。这里每 2 秒确认一次"父亲"还在不在。
+    """
+    raw = os.environ.get("TRASH_SORTER_PARENT_PID")
+    if not raw:
+        return
+    try:
+        parent_pid = int(raw)
+    except ValueError:
+        LOGGER.warning("TRASH_SORTER_PARENT_PID=%r 不是合法 PID，忽略", raw)
+        return
+
+    if os.name == "nt":
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        SYNCHRONIZE = 0x00100000
+        WAIT_TIMEOUT = 0x00000102
+
+        def parent_alive() -> bool:
+            handle = kernel32.OpenProcess(SYNCHRONIZE, False, parent_pid)
+            if not handle:
+                return False
+            try:
+                # 还在跑 -> WAIT_TIMEOUT；已退出 -> WAIT_OBJECT_0
+                return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+            finally:
+                kernel32.CloseHandle(handle)
+
+    else:  # pragma: no cover - 非 Windows 走信号 0 探测
+        def parent_alive() -> bool:
+            try:
+                os.kill(parent_pid, 0)
+                return True
+            except OSError:
+                return False
+
+    def watch() -> None:
+        while True:
+            time.sleep(2.0)
+            if not parent_alive():
+                LOGGER.warning("启动器进程 %d 已退出，后端随之退出（避免孤儿进程占着摄像头）", parent_pid)
+                logging.shutdown()
+                os._exit(0)  # 直接退出：确保不会卡在相机线程的收尾上，句柄由系统回收
+
+    threading.Thread(target=watch, name="parent-watchdog", daemon=True).start()
+    LOGGER.info("已启用启动器看护：启动器 PID=%d（它退出则后端退出）", parent_pid)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logging.basicConfig(
         level=os.environ.get("TRASH_SORTER_LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
     )
+    start_parent_watchdog()
+    quiet_client_disconnects()
     settings = load_settings()
     classes = load_classes()
 
