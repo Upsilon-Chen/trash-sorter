@@ -304,8 +304,9 @@ export interface CameraListResponse {
   count: number;
 }
 
-export function listCameras(): Promise<CameraListResponse> {
-  return request<CameraListResponse>('/api/cameras');
+export function listCameras(force = false): Promise<CameraListResponse> {
+  const query = force ? '?force=1' : '';
+  return request<CameraListResponse>('/api/cameras' + query);
 }
 
 export interface CameraSelectResponse {
@@ -997,3 +998,4 @@ export const trashSocket = new TrashSocket();
 export function requestState(): boolean {
   return trashSocket.send('state');
 }
+

@@ -733,11 +733,17 @@ class AutoAnnotateRequest(BaseModel):
 # 摄像头接口
 # ---------------------------------------------------------------------------
 @app.get("/api/cameras")
-async def list_cameras(request: Request) -> dict[str, Any]:
-    """枚举 0 ~ scan_max_index 号摄像头；能真正读到帧才算可用。"""
+async def list_cameras(request: Request, force: bool = False) -> dict[str, Any]:
+    """枚举 0 ~ scan_max_index 号摄像头；能真正读到帧才算可用。
+
+    `?force=1` 绕过缓存做一次真实探测（给「刷新列表」按钮用）；
+    普通轮询走缓存，避免每次刷新都卡在几秒到几分钟的设备探测上。
+    """
     services = services_of(request)
     try:
-        cameras = await asyncio.to_thread(services.camera.list_cameras)
+        cameras = await asyncio.to_thread(
+            services.camera.list_cameras, 0.0 if force else None
+        )
     except CameraError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:

@@ -269,7 +269,7 @@ class CameraService:
         finally:
             self._device_lock.release()
 
-    def list_cameras(self) -> list[CameraInfo]:
+    def list_cameras(self, cache_seconds: Optional[float] = None) -> list[CameraInfo]:
         """枚举 0 ~ scan_max_index，能读帧才返回。
 
         正在使用中的那台设备**不会去探测**（探测会 open/release 它，
@@ -278,7 +278,8 @@ class CameraService:
         # 命中缓存直接返回：探测是重活（实测单次 3 秒起，虚拟设备可到几分钟）
         now = time.monotonic()
         cached = self._enum_cache
-        if cached is not None and self._enum_cache_seconds > 0 and now - cached[0] < self._enum_cache_seconds:
+        ttl = self._enum_cache_seconds if cache_seconds is None else float(cache_seconds)
+        if cached is not None and ttl > 0 and now - cached[0] < ttl:
             _LOGGER.info("摄像头枚举命中缓存（%.1f 秒前，共 %d 个）", now - cached[0], len(cached[1]))
             return list(cached[1])
 

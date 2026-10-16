@@ -103,10 +103,10 @@ export default function CameraPanel({
   );
 
   const refresh = useCallback(
-    async (silent = false) => {
+    async (silent = false, force = false) => {
       setLoading(true);
       try {
-        const data = await listCameras();
+        const data = await listCameras(force);
         setCameras(data.cameras ?? []);
         setSelected((previous) => previous ?? data.current ?? data.cameras?.[0]?.index ?? null);
         if (!silent) {
@@ -256,7 +256,7 @@ export default function CameraPanel({
             size="small"
             icon={<ReloadOutlined />}
             loading={loading}
-            onClick={() => void refresh()}
+            onClick={() => void refresh(false, true)}
           >
             刷新列表
           </Button>

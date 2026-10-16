@@ -20,7 +20,7 @@ app:
 
 camera:
   # 枚举 0 ~ scan_max_index 号摄像头，能真正读到帧才算可用
-  scan_max_index: 10
+  scan_max_index: 3
   # auto | dshow | msmf | v4l2 | avfoundation | any
   backend: "auto"
   width: 1280
