@@ -104,6 +104,13 @@ class CameraService:
     """摄像头枚举 / 选择 / 抓帧 / MJPEG 帧源。"""
 
     def __init__(self, config: Optional[dict] = None) -> None:
+        # 枚举缓存：探测某些摄像头（虚拟设备 / 异常 dshow 设备）会阻塞几秒到几分钟，
+        # 前端每次刷新都触发一次的话，界面会长时间卡在"正在刷新"。
+        # 所以：结果缓存 TTL + 失败项负缓存（失败过的索引一段时间内不再探测）。
+        self._enum_cache: Optional[tuple[float, list[CameraInfo]]] = None
+        self._enum_cache_seconds = float(_cfg(config, "enumerate_cache_seconds", default=20.0))
+        self._probe_failures: dict[int, float] = {}
+        self._probe_failure_ttl = float(_cfg(config, "probe_failure_ttl_seconds", default=120.0))
         self._config = config or {}
         self._scan_max_index = int(_cfg(self._config, "scan_max_index", default=10))
         self._width = int(_cfg(self._config, "width", default=1280))
@@ -268,6 +275,13 @@ class CameraService:
         正在使用中的那台设备**不会去探测**（探测会 open/release 它，
         和抓帧线程并发时会把进程搞崩），直接用已知信息。
         """
+        # 命中缓存直接返回：探测是重活（实测单次 3 秒起，虚拟设备可到几分钟）
+        now = time.monotonic()
+        cached = self._enum_cache
+        if cached is not None and self._enum_cache_seconds > 0 and now - cached[0] < self._enum_cache_seconds:
+            _LOGGER.info("摄像头枚举命中缓存（%.1f 秒前，共 %d 个）", now - cached[0], len(cached[1]))
+            return list(cached[1])
+
         if not self._enumerate_lock.acquire(timeout=30.0):
             raise CameraError("上一次摄像头枚举还没结束，请稍后重试")
         try:
@@ -276,14 +290,20 @@ class CameraService:
                 in_use = current_info.index if current_info is not None else None
 
             found: list[CameraInfo] = []
+            skipped = 0
             _LOGGER.info("开始枚举摄像头 0-%d ...（正在使用 %s，跳过探测）", self._scan_max_index, in_use)
             for index in range(0, self._scan_max_index + 1):
                 if index == in_use and current_info is not None:
                     found.append(current_info)
                     continue
+                failed_at = self._probe_failures.get(index)
+                if failed_at is not None and now - failed_at < self._probe_failure_ttl:
+                    skipped += 1
+                    continue
                 info = self._probe(index)
                 if info is not None:
                     found.append(info)
+                    self._probe_failures.pop(index, None)
                     _LOGGER.info(
                         "发现摄像头 index=%d %dx%d backend=%s",
                         info.index,
@@ -291,8 +311,16 @@ class CameraService:
                         info.height,
                         info.backend,
                     )
-            _LOGGER.info("摄像头枚举完成，共 %d 个", len(found))
-            return found
+                else:
+                    self._probe_failures[index] = time.monotonic()
+            self._enum_cache = (time.monotonic(), list(found))
+            _LOGGER.info(
+                "摄像头枚举完成，共 %d 个（跳过最近失败的 %d 个索引，耗时 %.2f 秒）",
+                len(found),
+                skipped,
+                time.monotonic() - now,
+            )
+            return list(found)
         finally:
             self._enumerate_lock.release()
 
