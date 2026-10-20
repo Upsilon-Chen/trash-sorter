@@ -194,6 +194,26 @@ class SerialService:
                 return _PRIORITY_TOP_SCORE - index * _PRIORITY_STEP
         return 0
 
+def _ttl_cache(seconds: float):
+    """给慢接口加 TTL 缓存：串口开着时 comports() 在 Windows 上可能阻塞几十秒。"""
+
+    def decorate(fn):
+        state = {"at": 0.0, "value": None}
+
+        def wrapper(self, *args, **kwargs):
+            now = time.monotonic()
+            if state["value"] is not None and now - state["at"] < seconds:
+                return state["value"]
+            value = fn(self, *args, **kwargs)
+            state["at"], state["value"] = now, value
+            return value
+
+        return wrapper
+
+    return decorate
+
+
+    @_ttl_cache(8.0)
     def list_ports(self) -> list[SerialPortInfo]:
         """扫描串口，按优先级降序（无匹配的排最后）。"""
         try:

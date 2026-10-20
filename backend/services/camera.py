@@ -108,9 +108,11 @@ class CameraService:
         # 前端每次刷新都触发一次的话，界面会长时间卡在"正在刷新"。
         # 所以：结果缓存 TTL + 失败项负缓存（失败过的索引一段时间内不再探测）。
         self._enum_cache: Optional[tuple[float, list[CameraInfo]]] = None
-        self._enum_cache_seconds = float(_cfg(config, "enumerate_cache_seconds", default=20.0))
+        self._enum_cache_seconds = float(_cfg(config, "enumerate_cache_seconds", default=300.0))
         self._probe_failures: dict[int, float] = {}
         self._probe_failure_ttl = float(_cfg(config, "probe_failure_ttl_seconds", default=120.0))
+        # MJPEG 单流策略：浏览器对同域只有约 6 条连接，流一旦倍增会把列表请求挤到无限排队
+        self._stream_generation = 0
         self._config = config or {}
         self._scan_max_index = int(_cfg(self._config, "scan_max_index", default=10))
         self._width = int(_cfg(self._config, "width", default=1280))
@@ -626,13 +628,23 @@ class CameraService:
         return self._placeholder
 
     def frames(self) -> Iterator[bytes]:
-        """MJPEG 分块生成器：供 GET /api/video/feed 使用。"""
+        """MJPEG 分块生成器：供 GET /api/video/feed 使用。
+
+        单流策略：新流接入时本流立即退出，保证同一时刻最多只有一条 MJPEG 流。
+        浏览器对同一域名最多约 6 条 HTTP/1.1 连接（WS 已占 1 条），流一旦倍增，
+        并行刷新的列表请求会被挤得无限排队——表现就是"所有列表一直转圈"。
+        """
         self._stream_clients += 1
+        self._stream_generation += 1
+        generation = self._stream_generation
         interval = 1.0 / max(self._stream_fps, 1.0)
         last_served = -1
         _LOGGER.debug("MJPEG 客户端接入，当前客户端数=%d", self._stream_clients)
         try:
             while True:
+                if generation != self._stream_generation:
+                    # 有更新的流接入了，本流立即让位，释放连接
+                    break
                 with self._lock:
                     jpeg = self._jpeg
                     count = self._frame_count
