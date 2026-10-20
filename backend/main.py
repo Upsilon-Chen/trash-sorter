@@ -474,6 +474,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     start_parent_watchdog()
     quiet_client_disconnects()
+
+    # 关键修复：默认线程池只有 min(32, CPU+4) 个线程（本机约 8~12 个），而
+    #   · /api/video/feed 这类长连接 MJPEG 流
+    #   · 摄像头探测（dshow 单次 3 秒起，异常设备可达数分钟）
+    # 都会长期占用 to_thread 的线程。池子一满，所有走 to_thread 的接口就一起排队、
+    # 永远不出结果 —— 现象就是"程序跑一会儿后所有列表都在刷新但没结果"。
+    # 这里显式放大到 64，并给线程起名字方便排查。
+    from concurrent.futures import ThreadPoolExecutor
+
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=64, thread_name_prefix="blocking")
+    )
+    LOGGER.info("阻塞调用线程池已放大到 64 个线程")
+
     settings = load_settings()
     classes = load_classes()
 
@@ -544,6 +558,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         LOGGER.info("后台预热完成（模型 / 摄像头 / 串口）")
 
     services.tasks.append(asyncio.create_task(warm_up(), name="warm-up"))
+
+    async def log_resources() -> None:
+        """每 30 秒记录一次活跃线程数。
+
+        线程数持续上涨 = 有东西在泄漏线程（长连接流/阻塞调用），
+        这是"接口突然全都不返回"的前兆，留着这条日志下次能一眼看出来。
+        """
+        while True:
+            await asyncio.sleep(30.0)
+            LOGGER.info("运行状态：活跃线程 %d 个（线程池 64）", threading.active_count())
+
+    services.tasks.append(asyncio.create_task(log_resources(), name="resource-log"))
 
     LOGGER.info("后端就绪，等待前端连接")
     try:
