@@ -357,7 +357,9 @@ export default function App() {
         </aside>
 
         <main className="app-main hud-scope">
-          {page === 'dashboard' ? (
+          {/* 两个页面都常驻，只切换显示：切页不卸载面板，
+              摄像头/模型/串口的选择与列表现场全部保留，不会再每次切页重新检测 */}
+          <div className="page-layer" style={{ display: page === 'dashboard' ? 'block' : 'none' }}>
             <Row gutter={[16, 16]}>
               <Col xs={24} xl={14}>
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -396,13 +398,14 @@ export default function App() {
                 </Space>
               </Col>
             </Row>
-          ) : (
+          </div>
+          <div className="page-layer" style={{ display: page === 'annotate' ? 'block' : 'none' }}>
             <AnnotatePanel
               cameraState={cameraState}
               onCameraState={setCameraState}
               onStateRefresh={requestState}
             />
-          )}
+          </div>
         </main>
       </div>
 
