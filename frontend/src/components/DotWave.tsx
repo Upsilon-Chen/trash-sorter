@@ -179,19 +179,15 @@ export default function DotWave() {
       // 限制到 ~40fps：注意要"攒时间"，不能直接丢帧 ——
       // 60Hz 下每帧 delta≈0.0167，若 delta<0.022 就 return，时间永远攒不够，画面会冻住
       accumulator += delta;
-      if (accumulator < 0.022) return;
+      if (accumulator < 0.013) return;
       clock += accumulator;
       accumulator = 0;
 
-      const k2 = 1 - Math.pow(1 - 0.16, delta * 60);
+      // 鼠标位置直接取目标值（不做缓动）：缓动会让"鼠标附近提亮"明显滞后，
+      // 这里要的是几乎没有延迟的跟手。
       if (targetX > -9000) {
-        if (mouseX < -9000) {
-          mouseX = targetX;
-          mouseY = targetY;
-        } else {
-          mouseX += (targetX - mouseX) * k2;
-          mouseY += (targetY - mouseY) * k2;
-        }
+        mouseX = targetX;
+        mouseY = targetY;
       }
       render(clock);
     };
