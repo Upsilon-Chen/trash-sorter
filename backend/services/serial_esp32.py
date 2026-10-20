@@ -102,7 +102,8 @@ class SerialService:
             self._priority_keywords = _DEFAULT_PRIORITY_KEYWORDS
 
         self._on_event: Callable[[dict[str, Any]], None] = on_event or (lambda event: None)
-        self._lock = threading.RLock()  # 保护连接状态与写操作
+        self._lock = threading.RLock()  # 保护连接状态（绝不在持锁时做阻塞 I/O）
+        self._write_lock = threading.Lock()  # 只保护「写出这一行」，取锁带超时
         self._serial: Optional[serial.Serial] = None
         self._port: Optional[str] = None
         self._connected_at: Optional[float] = None
@@ -120,9 +121,9 @@ class SerialService:
     # ------------------------------------------------------------ 基础属性
     @property
     def is_connected(self) -> bool:
-        with self._lock:
-            return self._serial is not None and bool(getattr(self._serial, "is_open", False))
-
+        # 无锁读：属性查询绝不能因为别人持锁而阻塞
+        port = self._serial
+        return port is not None and getattr(port, "is_open", False)
     @property
     def port(self) -> Optional[str]:
         return self._port
@@ -146,7 +147,9 @@ class SerialService:
             _LOGGER.debug("串口事件回调失败: %s", exc)
 
     def status(self) -> dict[str, Any]:
-        with self._lock:
+        # 取锁带超时：写操作在蓝牙串口上可能永久阻塞，死等会拖垮整个后端
+        locked = self._lock.acquire(timeout=0.25)
+        try:
             connection = None
             if self._serial is not None:
                 connection = {
@@ -160,6 +163,9 @@ class SerialService:
                     "ready": self._ready,
                     "last_status": self._last_status,
                 }
+        finally:
+            if locked:
+                self._lock.release()
         return {
             "connected": self.is_connected,
             "connection": connection,
@@ -376,18 +382,33 @@ class SerialService:
     def send_line(self, line: str) -> dict[str, Any]:
         """发送一行文本（自动补 \\n）。"""
         payload = line if line.endswith("\n") else line + "\n"
+        # 只在锁内取连接引用，**写操作放到锁外**：
+        # Windows 蓝牙/USB 串口的 write/flush 可能卡住不返回，持锁会永久堵死
+        # status()/send()/teardown，进而拖垮整个后端（表现为所有列表卡在刷新）。
         with self._lock:
             connection = self._serial
             if connection is None or not getattr(connection, "is_open", False):
                 return {"ok": False, "error": "串口未连接", "line": payload.strip()}
-            try:
-                connection.write(payload.encode("utf-8"))
-                connection.flush()
-            except Exception as exc:
-                self._last_error = str(exc)
-                _LOGGER.warning("串口写入失败: %s", exc)
-                self._teardown_locked(reason=f"写异常: {exc}")
-                return {"ok": False, "error": str(exc), "line": payload.strip()}
+        # 写锁带超时：上一次写还没返回时，别让后续命令无限排队（那会占满线程池）
+        if not self._write_lock.acquire(timeout=1.0):
+            return {"ok": False, "error": "串口忙（上一次写入未返回）", "line": payload.strip()}
+        wrote_ok = True
+        write_error = None
+        try:
+            connection.write(payload.encode("utf-8"))
+            # 不做 flush()：pyserial 的 flush 会等驱动确认，在蓝牙串口上可能永久阻塞
+        except Exception as exc:
+            wrote_ok = False
+            write_error = exc
+        finally:
+            self._write_lock.release()
+        if not wrote_ok:
+            self._last_error = str(write_error)
+            _LOGGER.warning("串口写入失败: %s", write_error)
+            with self._lock:
+                if self._serial is connection:
+                    self._teardown_locked(reason=f"写异常: {write_error}")
+            return {"ok": False, "error": str(write_error), "line": payload.strip()}
         self._tx_count += 1
         return {"ok": True, "error": None, "line": payload.strip()}
 
