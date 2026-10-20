@@ -48,6 +48,7 @@ export default function Ambient() {
     let frame = 0;
     let last = performance.now();
     let needsUpdate = true;
+    let lastVarWrite = 0;
 
     const onMove = (event: PointerEvent) => {
       targetX = event.clientX;
@@ -70,11 +71,14 @@ export default function Ambient() {
       currentX += (targetX - currentX) * k;
       currentY += (targetY - currentY) * k;
 
-      const width = window.innerWidth || 1;
-      const height = window.innerHeight || 1;
-      // 归一化到 [-1, 1]，供 CSS 做视差与光晕定位
-      root.style.setProperty('--mx', ((currentX / width) * 2 - 1).toFixed(4));
-      root.style.setProperty('--my', ((currentY / height) * 2 - 1).toFixed(4));
+      // CSS 变量只驱动 ≤0.35° 的页面倾斜，20fps 足够；每帧写会让全文档样式失效
+      if (now - lastVarWrite > 50) {
+        lastVarWrite = now;
+        const width = window.innerWidth || 1;
+        const height = window.innerHeight || 1;
+        root.style.setProperty('--mx', ((currentX / width) * 2 - 1).toFixed(3));
+        root.style.setProperty('--my', ((currentY / height) * 2 - 1).toFixed(3));
+      }
       const spotX = SPOT_DIRECT ? targetX : currentX;
       const spotY = SPOT_DIRECT ? targetY : currentY;
       if (spotRef.current) {

@@ -65,7 +65,7 @@ export default function DotWave() {
     };
 
     const build = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+      const dpr = Math.min(window.devicePixelRatio || 1, 1);   // 背景点阵不需要高分屏精度
       width = window.innerWidth;
       height = window.innerHeight;
       canvas.width = Math.max(1, Math.floor(width * dpr));
@@ -74,9 +74,9 @@ export default function DotWave() {
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      spacing = width < 900 ? 24 : 30;
+      spacing = width < 900 ? 26 : width > 1900 ? 42 : 34;
       // 点太多也不划算：给总数设上限，超了就加大间距
-      while ((Math.ceil(width / spacing) + 2) * (Math.ceil(height / spacing) + 2) > 5200) {
+      while ((Math.ceil(width / spacing) + 2) * (Math.ceil(height / spacing) + 2) > 2600) {
         spacing += 4;
       }
       const cols = Math.ceil(width / spacing) + 2;

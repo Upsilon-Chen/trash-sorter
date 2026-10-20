@@ -22,6 +22,24 @@ import './theme.css';
 import './hud.css';
 import './rhine.css';
 
+// ---------------------------------------------------------------------------
+// 全局请求超时兜底
+//
+// 任何 fetch 超过 20 秒没有响应就中止并抛错。这样即使后端卡住、网络断了、
+// 或者某个接口永远不返回，界面也只会显示"请求失败"，**不会永远停在"刷新中"**。
+// 之前所有列表同时卡在刷新状态、而后端其实早就空闲（日志可证），
+// 就是因为请求一直挂着没人中止。
+// ---------------------------------------------------------------------------
+const rawFetch = window.fetch.bind(window);
+window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  if (init?.signal) return rawFetch(input, init);
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 20000);
+  return rawFetch(input, { ...init, signal: controller.signal }).finally(() => {
+    window.clearTimeout(timer);
+  });
+};
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error('未找到 #root 挂载点');
