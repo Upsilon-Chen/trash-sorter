@@ -283,8 +283,16 @@ class CameraService:
             _LOGGER.info("摄像头枚举命中缓存（%.1f 秒前，共 %d 个）", now - cached[0], len(cached[1]))
             return list(cached[1])
 
-        if not self._enumerate_lock.acquire(timeout=30.0):
-            raise CameraError("上一次摄像头枚举还没结束，请稍后重试")
+        # 关键修复：自动路径绝不阻塞等锁。
+        # 之前页面来回切换会并发发起多次 /api/cameras，每个都阻塞在 to_thread 的线程里
+        # 等最多 30 秒，把线程池占满 → 所有走 to_thread 的接口（模型 / 串口 / 标注列表…）
+        # 全部排队、界面表现为"所有列表一直在刷新但没结果"。
+        if not self._enumerate_lock.acquire(blocking=False):
+            if cached is not None:
+                _LOGGER.info("摄像头枚举进行中，直接返回上次结果（共 %d 个）", len(cached[1]))
+                return list(cached[1])
+            _LOGGER.info("摄像头枚举进行中且暂无缓存，先返回空列表，前端稍后会自动重试")
+            return []
         try:
             with self._lock:
                 current_info = self._info
