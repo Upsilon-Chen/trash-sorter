@@ -43,6 +43,22 @@ const LOG_LIMIT = 50;
 /** 左侧侧边栏的页面 */
 type PageKey = 'dashboard' | 'annotate';
 
+/**
+ * 内容相同就返回旧对象（浅比较用 JSON，状态对象都很小）。
+ *
+ * 为什么必须这样：WS 每来一个 state 事件都会构造新的 snapshot/camera/model/serial 对象。
+ * 如果每次都替换，子面板拿到的引用每次都变 → 它们的 useCallback 身份变 → 依赖它的
+ * useEffect 重跑 → setLoading(true) + 重新请求 → 列表永远停在"刷新中"。
+ * 连上串口后 ESP32 持续上报，事件频率暴涨，这个循环就会被放大到必现。
+ */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 export default function App() {
   const { message } = AntApp.useApp();
   const { mode: themeMode, toggle: toggleTheme } = useThemeMode();
@@ -76,10 +92,10 @@ export default function App() {
     const state = raw as Partial<BackendState> & Partial<DetectionSnapshot>;
     const det = (state.detection ?? state) as DetectionSnapshot | undefined;
     if (!det || typeof det !== 'object') return;
-    setSnapshot(det);
-    if (det.camera) setCameraState(det.camera);
-    if (det.model) setModelState(det.model);
-    if (det.serial) setSerialState(det.serial);
+    setSnapshot((prev) => (sameJson(prev, det) ? prev : det));
+    if (det.camera) setCameraState((prev) => (sameJson(prev, det.camera) ? prev : det.camera));
+    if (det.model) setModelState((prev) => (sameJson(prev, det.model) ? prev : det.model));
+    if (det.serial) setSerialState((prev) => (sameJson(prev, det.serial) ? prev : det.serial));
     if (Array.isArray(det.results) && det.results.length > 0) {
       setDetection({
         results: det.results,
@@ -105,16 +121,16 @@ export default function App() {
           applyState(data);
           break;
         case 'detection':
-          setDetection(data as DetectionEventData);
+          setDetection((prev) => (sameJson(prev, data) ? prev : (data as DetectionEventData)));
           break;
         case 'sort':
           setHistory((previous) => [data as SortEventData, ...previous].slice(0, HISTORY_LIMIT));
           break;
         case 'camera_state':
-          setCameraState(data as CameraState);
+          setCameraState((prev) => (sameJson(prev, data) ? prev : (data as CameraState)));
           break;
         case 'model_state':
-          setModelState(data as ModelState);
+          setModelState((prev) => (sameJson(prev, data) ? prev : (data as ModelState)));
           break;
         case 'serial_connected':
           pushLog('log', `已连接串口 ${data?.port ?? ''} @ ${data?.baudrate ?? ''}`.trim());
