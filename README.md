@@ -272,6 +272,45 @@ python tools/desktop.py --selftest 8     # 开窗口 8 秒后自动关闭（自�
 > 所以体积是 0，但换一台电脑仍需先 `pip install -r backend/requirements.txt`。
 > 要交给不装 Python 的人运行，需要做绿色版（见 [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md)）。
 
+### 打包桌面启动器（exe，可选）
+
+exe **只负责"找 Python → 起 `tools/desktop.py` → 等它结束"**，不含 torch / opencv / pywebview，
+所以只有约 7.7 MB；真正的依赖仍由本机 Python 环境提供。
+
+**前提**：本机已装好全部依赖，并额外装 pyinstaller
+
+```bash
+python -m pip install pyinstaller      # 只有打包才需要
+```
+
+**生成**（在项目根目录执行，约 1~2 分钟）：
+
+```bash
+python tools/build_exe.py
+```
+
+| 产物 / 中间文件 | 说明 |
+| --- | --- |
+| `垃圾自动分拣系统.exe` | 最终启动器，放项目根目录，双击即用（`*.exe` 已 gitignore，不入库） |
+| `dist-exe/` | PyInstaller 原始输出（已 gitignore） |
+| `build/`、`*.spec` | 中间文件（已 gitignore，可随时删掉重来） |
+
+构建脚本实际执行的是：`PyInstaller --onefile --windowed --splash assets/splash.png`
+加图标 `assets/app.ico`，把 `tools/app_launcher.py` 冻结成单文件 exe。
+图标/启动图缺失时会先用 `tools/make_icon.py` / `tools/make_splash.py` 自动生成。
+
+**什么时候必须重新打包**：
+
+| 改动位置 | 是否重打包 | 原因 |
+| --- | --- | --- |
+| `tools/app_launcher.py` | **要** | 它就是 exe 里被冻结的逻辑 |
+| `tools/desktop.py`、backend、frontend | 不用 | 解释执行，双击 exe 时读的就是最新代码 |
+| 换了 Python 解释器路径（如迁到 `D:\py310`） | **要** | 候选路径写在 exe 内部 |
+| 换了 `assets/app.ico` / `splash.png` | **要** | 图标与启动图是打包进去的 |
+
+> 不想打包也完全可以：直接双击 `启动.bat`（同样无控制台），它跑的是同一份
+> `tools/desktop.py`，改了启动器代码立刻生效，不用等构建。
+
 ### 手启动（后端 + 前端分离）
 
 #### 1. 后端
@@ -566,6 +605,9 @@ python train.py --data data.yaml --model yolov8n.pt --epochs 100 --imgsz 640 \
 
 | 文件 | 说明 |
 | --- | --- |
+> 该校模板文件**不入库**（`第xx小组_xxx项目_测试成绩书.xlsx` 已加入 `.gitignore`）。
+> 要重新生成成绩书，请先把学校下发的模板放回项目根目录，再运行 `fill_template.py`。
+
 | `docs/testbook/第xx小组_垃圾自动识别分类系统_测试成绩书.xlsx` | **主交付物**：封面 / 测试项目（85 条）/ UI界面 / 运行 四个工作表 |
 | `docs/testbook/测试项目.md` | 同一份用例的 Markdown 版，便于评审 |
 | `docs/testbook/cases_final.py` | 用例数据（唯一数据源，改这里即可重新生成） |

@@ -220,7 +220,12 @@ def write_markdown() -> Path:
 
 def main() -> None:
     if not TEMPLATE.exists():
-        raise SystemExit(f"模板不存在：{TEMPLATE}")
+        raise SystemExit(
+            "找不到学校模板：\n"
+            f"  {TEMPLATE}\n"
+            "该模板不入库（已 gitignore）。请把学校下发的模板文件放到项目根目录后重试，\n"
+            "文件名必须是：第xx小组_xxx项目_测试成绩书.xlsx"
+        )
     shutil.copy2(TEMPLATE, OUT)
 
     wb = load_workbook(OUT)
