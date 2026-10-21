@@ -1,0 +1,591 @@
+{
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/annotate/auto",
+      "summary": "Annotate Auto",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/annotate/build",
+      "summary": "Annotate Build",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/annotate/claim",
+      "summary": "Annotate Claim",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/annotate/claims",
+      "summary": "Annotate Claims",
+      "tags": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/annotate/image",
+      "summary": "Annotate Delete Image",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/annotate/image",
+      "summary": "Annotate Image",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/annotate/images",
+      "summary": "Annotate Images",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/annotate/labels",
+      "summary": "Annotate Labels",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/annotate/labels",
+      "summary": "Annotate Save",
+      "tags": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/annotate/reference",
+      "summary": "Annotate Clear Reference",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/annotate/reference",
+      "summary": "Annotate Reference",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/annotate/reference",
+      "summary": "Annotate Set Reference",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/annotate/reference/image",
+      "summary": "Annotate Reference Image",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/annotate/release",
+      "summary": "Annotate Release",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/augment/apply",
+      "summary": "Augment Apply",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/augment/clean",
+      "summary": "Augment Clean",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/augment/ops",
+      "summary": "Augment Ops",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/camera/select",
+      "summary": "Select Camera",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras",
+      "summary": "List Cameras",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/capture",
+      "summary": "Capture Frame",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/captures",
+      "summary": "List Captures",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/detection/multi-object",
+      "summary": "Set Multi Object",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/detection/start",
+      "summary": "Start Detection",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/detection/stop",
+      "summary": "Stop Detection",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/models",
+      "summary": "List Models",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/select",
+      "summary": "Select Model",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/upload",
+      "summary": "Upload Model",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/network",
+      "summary": "Get Network",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/serial/connect",
+      "summary": "Connect Serial",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/serial/disconnect",
+      "summary": "Disconnect Serial",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/serial/ports",
+      "summary": "List Serial Ports",
+      "tags": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/sort/manual",
+      "summary": "Manual Sort",
+      "tags": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/video/feed",
+      "summary": "Video Feed",
+      "tags": []
+    }
+  ],
+  "route_count": 33,
+  "latency": {
+    "/api/network": {
+      "status": 200,
+      "median_ms": 30.2,
+      "samples_ms": [
+        32.5,
+        30.2,
+        29.9
+      ]
+    },
+    "/api/models": {
+      "status": 200,
+      "median_ms": 16.1,
+      "samples_ms": [
+        19.5,
+        16.1,
+        6.3
+      ]
+    },
+    "/api/cameras": {
+      "status": 200,
+      "median_ms": 1.6,
+      "samples_ms": [
+        1.6,
+        1.7,
+        1.1
+      ]
+    },
+    "/api/serial/ports": {
+      "status": 200,
+      "median_ms": 1.2,
+      "samples_ms": [
+        1.4,
+        1.2,
+        1.0
+      ]
+    },
+    "/api/captures": {
+      "status": 200,
+      "median_ms": 297.1,
+      "samples_ms": [
+        297.1,
+        272.9,
+        364.4
+      ]
+    },
+    "/api/annotate/images": {
+      "status": 200,
+      "median_ms": 780.9,
+      "samples_ms": [
+        720.1,
+        780.9,
+        809.7
+      ]
+    },
+    "/api/annotate/reference": {
+      "status": 200,
+      "median_ms": 7.2,
+      "samples_ms": [
+        7.2,
+        5.9,
+        27.0
+      ]
+    },
+    "/api/augment/ops": {
+      "status": 200,
+      "median_ms": 1.2,
+      "samples_ms": [
+        1.5,
+        1.2,
+        1.1
+      ]
+    },
+    "/api/classes": {
+      "status": 404,
+      "median_ms": 2.6,
+      "samples_ms": [
+        2.6,
+        2.9,
+        2.4
+      ]
+    },
+    "/api/state": {
+      "status": 404,
+      "median_ms": 2.8,
+      "samples_ms": [
+        2.5,
+        28.2,
+        2.8
+      ]
+    },
+    "/api/detection/status": {
+      "status": 404,
+      "median_ms": 2.7,
+      "samples_ms": [
+        26.3,
+        2.7,
+        2.4
+      ]
+    },
+    "/api/serial/status": {
+      "status": 404,
+      "median_ms": 2.6,
+      "samples_ms": [
+        2.4,
+        19.0,
+        2.6
+      ]
+    }
+  },
+  "cameras": {
+    "status": 200,
+    "ms": 1.6,
+    "data": {
+      "ok": true,
+      "cameras": [
+        {
+          "index": 0,
+          "name": "Camera 0",
+          "width": 1280,
+          "height": 720,
+          "backend": "dshow",
+          "fps": 30.0
+        },
+        {
+          "index": 2,
+          "name": "Camera 2",
+          "width": 1280,
+          "height": 720,
+          "backend": "dshow",
+          "fps": 30.0
+        }
+      ],
+      "current": 0,
+      "count": 2
+    }
+  },
+  "camera_open": {
+    "path": "/api/camera/select",
+    "status": 200,
+    "ms": 2746.9,
+    "resp": "{\"ok\":true,\"camera\":{\"index\":0,\"name\":\"Camera 0\",\"width\":1280,\"height\":720,\"backend\":\"dshow\",\"fps\":30.0},\"state\":{\"opened\":true,\"camera\":{\"index\":0,\"name\":\"Camera 0\",\"width\":1280,\"height\":720,\"backend\":\"dshow\",\"fps\":30.0},\"frame_count\":0,\"last_frame_ts\":1792575480.6502283,\"frame_age\":0.0,\"grab_thread_alive\":true,\"restarts\":0,\"last_restart_ts\":null,\"last_error\":null,\"stream_clients\":0,\"encoding\":fa"
+  },
+  "models": {
+    "status": 200,
+    "ms": 4.0,
+    "data": {
+      "ok": true,
+      "models": [
+        {
+          "name": "trash_final0.pt",
+          "size_mb": 6.19,
+          "modified": "2026-10-15T14:43:05",
+          "modified_ts": 1792046585.6135032,
+          "current": true
+        },
+        {
+          "name": "f-trash.pt",
+          "size_mb": 6.19,
+          "modified": "2026-10-15T13:29:17",
+          "modified_ts": 1792042157.1929357,
+          "current": false
+        },
+        {
+          "name": "trash7.pt",
+          "size_mb": 6.19,
+          "modified": "2026-10-15T12:03:09",
+          "modified_ts": 1792036989.3246613,
+          "current": false
+        },
+        {
+          "name": "trash6.pt",
+          "size_mb": 6.18,
+          "modified": "2026-10-15T11:42:01",
+          "modified_ts": 1792035721.4667706,
+          "current": false
+        },
+        {
+          "name": "trash2.pt",
+          "size_mb": 6.18,
+          "modified": "2026-10-14T23:43:39",
+          "modified_ts": 1791992619.0528069,
+          "current": false
+        },
+        {
+          "name": "trash1.pt",
+          "size_mb": 6.18,
+          "modified": "2026-10-14T23:28:00",
+          "modified_ts": 1791991680.7395551,
+          "current": false
+        },
+        {
+          "name": "test2.pt",
+          "size_mb": 6.18,
+          "modified": "2026-10-14T23:00:43",
+          "modified_ts": 1791990043.132913,
+          "current": false
+        },
+        {
+          "name": "test3.pt",
+          "size_mb": 6.18,
+          "modified": "2026-10-14T23:00:43",
+          "modified_ts": 1791990043.132913,
+          "current": false
+        },
+        {
+          "name": "test.pt",
+          "size_mb": 6.18,
+          "modified": "2026-10-14T22:26:40",
+          "modified_ts": 1791988000.8689725,
+          "current": false
+        },
+        {
+          "name": "test1.pt",
+          "size_mb": 6.18,
+          "modified": "2026-10-14T22:26:40",
+          "modified_ts": 1791988000.8689725,
+          "current": false
+        }
+      ],
+      "current": "trash_final0.pt",
+      "model_dir": "D:\\trash-sorter\\backend\\models",
+      "info": {
+        "current": "trash_final0.pt",
+        "loaded": true,
+        "class_count": 7,
+        "classes": [
+          "paper",
+          "plastic",
+          "battery",
+          "medicine",
+          "peel",
+          "mask",
+          "tableware"
+        ],
+        "device": "0",
+        "loaded_at": "2026-10-21T17:37:24",
+        "inference_count": 1,
+        "last_inference_ms": 15964.46
+      }
+    }
+  },
+  "model_load": {
+    "path": "/api/models/select",
+    "name": "trash_final0.pt",
+    "status": 200,
+    "ms": 198.6,
+    "resp": "{\"ok\":true,\"model\":{\"current\":\"trash_final0.pt\",\"loaded\":true,\"class_count\":7,\"classes\":[\"paper\",\"plastic\",\"battery\",\"medicine\",\"peel\",\"mask\",\"tableware\"],\"device\":\"0\",\"loaded_at\":\"2026-10-21T17:38:36\",\"inference_count\":353,\"last_inference_ms\":133.08}}"
+  },
+  "detection_start": {
+    "path": "/api/detection/start",
+    "status": 200,
+    "ms": 14.5,
+    "resp": "{\"ok\":true,\"detection\":{\"running\":true,\"frames\":0,\"fps\":0.0,\"started_at\":\"2026-10-21T17:38:00\",\"results\":[],\"counts\":{},\"group_counts\":{},\"cooldowns\":{},\"last_outcome\":null,\"last_error\":null,\"sort_enabled\":true,\"target_fps\":10.0,\"min_confidence\":0.35,\"max_box_area\":0.6,\"filtered_large\":0,\"multi_object\":\"hold\",\"multi_min_area\":0.01,\"stable_frames\":3,\"last_multi\":null,\"desired_running\":true,\"detecti"
+  },
+  "runtime_status": {
+    "/api/detection/status": {
+      "status": 404,
+      "ms": 3.8,
+      "data": {
+        "detail": "Not Found"
+      }
+    },
+    "/api/state": {
+      "status": 404,
+      "ms": 4.2,
+      "data": {
+        "detail": "Not Found"
+      }
+    }
+  },
+  "serial_ports": {
+    "status": 200,
+    "ms": 57.4,
+    "data": {
+      "ok": true,
+      "ports": [
+        {
+          "device": "COM3",
+          "description": "蓝牙链接上的标准串行 (COM3)",
+          "hwid": "BTHENUM\\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0000\\7&39291651&1&000000000000_00000001",
+          "manufacturer": "Microsoft",
+          "score": 0,
+          "preferred": false
+        },
+        {
+          "device": "COM4",
+          "description": "蓝牙链接上的标准串行 (COM4)",
+          "hwid": "BTHENUM\\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0000\\7&39291651&1&000000000000_00000004",
+          "manufacturer": "Microsoft",
+          "score": 0,
+          "preferred": false
+        },
+        {
+          "device": "COM5",
+          "description": "蓝牙链接上的标准串行 (COM5)",
+          "hwid": "BTHENUM\\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0000\\7&39291651&1&000000000000_00000000",
+          "manufacturer": "Microsoft",
+          "score": 0,
+          "preferred": false
+        },
+        {
+          "device": "COM6",
+          "description": "蓝牙链接上的标准串行 (COM6)",
+          "hwid": "BTHENUM\\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0002\\7&39291651&1&0102030416C4_C00000000",
+          "manufacturer": "Microsoft",
+          "score": 0,
+          "preferred": false
+        },
+        {
+          "device": "COM7",
+          "description": "蓝牙链接上的标准串行 (COM7)",
+          "hwid": "BTHENUM\\{00001101-0000-1000-8000-00805F9B34FB}_VID&000102B0_PID&0000\\7&39291651&1&9C56365649F6_C00000000",
+          "manufacturer": "Microsoft",
+          "score": 0,
+          "preferred": false
+        },
+        {
+          "device": "COM8",
+          "description": "蓝牙链接上的标准串行 (COM8)",
+          "hwid": "BTHENUM\\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0002\\7&39291651&1&A4056E77D728_C00000000",
+          "manufacturer": "Microsoft",
+          "score": 0,
+          "preferred": false
+        }
+      ],
+      "count": 6,
+      "connected": false,
+      "connection": null,
+      "state": {
+        "connected": false,
+        "connection": null,
+        "tx_count": 0,
+        "rx_count": 0,
+        "last_tx": null,
+        "last_rx": null,
+        "last_error": null
+      }
+    }
+  },
+  "serial_status": {
+    "status": 404,
+    "ms": 3.4,
+    "data": {
+      "detail": "Not Found"
+    }
+  },
+  "classes": {
+    "status": 404,
+    "ms": 25.7,
+    "data": {
+      "detail": "Not Found"
+    }
+  },
+  "sort_manual_without_hardware": {
+    "path": "/api/sort/manual",
+    "status": 409,
+    "ms": 2.0,
+    "resp": "{\"detail\":\"串口未连接，无法下发分类指令\"}"
+  },
+  "serial_connect_no_port": {
+    "path": "/api/serial/connect",
+    "status": 200,
+    "ms": 3039.1,
+    "resp": "{\"ok\":true,\"state\":{\"connected\":false,\"connection\":null,\"tx_count\":0,\"rx_count\":0,\"last_tx\":null,\"last_rx\":null,\"last_error\":\"Write timeout\"},\"connection\":null}"
+  },
+  "multi_object": {
+    "priority": {
+      "status": 200,
+      "ms": 5.7,
+      "resp": "{\"ok\":true,\"policy\":\"priority\",\"persisted\":true,\"detection\":{\"running\":true,\"frames\":372,\"fps\":86.32,\"started_at\":\"2026-10-21T17:38:00\",\"results\":[{\"class_id\":1,\"class_name\":\"plastic\",\"confidence\":0.8"
+    },
+    "largest": {
+      "status": 200,
+      "ms": 32.3,
+      "resp": "{\"ok\":true,\"policy\":\"largest\",\"persisted\":true,\"detection\":{\"running\":true,\"frames\":373,\"fps\":79.15,\"started_at\":\"2026-10-21T17:38:00\",\"results\":[{\"class_id\":1,\"class_name\":\"plastic\",\"confidence\":0.84"
+    },
+    "confidence": {
+      "status": 200,
+      "ms": 12.9,
+      "resp": "{\"ok\":true,\"policy\":\"confidence\",\"persisted\":true,\"detection\":{\"running\":true,\"frames\":373,\"fps\":79.15,\"started_at\":\"2026-10-21T17:38:00\",\"results\":[{\"class_id\":1,\"class_name\":\"plastic\",\"confidence\":0"
+    },
+    "hold": {
+      "status": 200,
+      "ms": 36.1,
+      "resp": "{\"ok\":true,\"policy\":\"hold\",\"persisted\":true,\"detection\":{\"running\":true,\"frames\":373,\"fps\":79.15,\"started_at\":\"2026-10-21T17:38:00\",\"results\":[{\"class_id\":1,\"class_name\":\"plastic\",\"confidence\":0.8464,"
+    }
+  }
+}

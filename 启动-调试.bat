@@ -4,6 +4,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 set "PY="
+if exist "D:\py310\python.exe" set "PY=D:\py310\python.exe"
 if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
 if not defined PY if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
 if not defined PY if exist "D:\miniconda\python.exe" set "PY=D:\miniconda\python.exe"

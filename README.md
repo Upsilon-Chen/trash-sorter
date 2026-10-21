@@ -26,8 +26,41 @@
 - [配置说明](#配置说明)
 - [后端接口](#后端接口)
 - [模型训练](#模型训练)
+- [最近更新](#最近更新)
+- [测试成绩书](#测试成绩书)
 - [常见问题（避坑）](#常见问题避坑)
 - [已知限制](#已知限制)
+
+---
+
+## 最近更新
+
+> 以下为本轮集中修复与新增的内容，均已在真实运行环境中验证。
+
+### 稳定性修复（"所有列表一直转圈 / 整页卡死"）
+
+| 问题 | 根因 | 处理 |
+| --- | --- | --- |
+| 串口写超时后整页卡死 | `send_line()` **持状态锁**做 `write()+flush()`，Windows 蓝牙串口上 `flush()` 可能永久阻塞 → 锁永不释放 | 写操作移到锁外；去掉 `flush()`；**所有取锁带超时**；`is_connected` 改无锁读 |
+| 跑一会儿后所有接口都不返回 | `asyncio.to_thread` 默认线程池只有 `min(32, CPU+4)` 个，被 MJPEG 长连接与摄像头探测占满 | 显式放大到 **64**，并每 30 秒打印活跃线程数 |
+| 视频流把连接吃光 | 浏览器同域只有约 6 条 HTTP/1.1 连接，多条 MJPEG 流 + 并行刷新请求会超限，溢出的请求在浏览器里无限排队 | **MJPEG 单流策略**：新流接入时旧流立即让位 |
+| `/api/cameras` 一次要 3 秒~几分钟 | 每次都真实探测 0~N 号设备（虚拟/蓝牙设备会长时间阻塞） | 结果缓存 300 秒 + **失败索引负缓存** 120 秒 + **非阻塞抢锁**（并发时立即返回旧值/空） |
+| `/api/serial/ports` 偶发 500 / 很慢 | 缓存装饰器写在类体内部导致结构被破坏；且串口打开时 `comports()` 会阻塞 | 改为方法内缓存（8 秒 TTL），结构不动 |
+| 切页面后各列表卡在"刷新中" | 三元表达式渲染导致**切页即卸载**整块面板，重挂载重新加载；WS 每次推送都换新对象引用使 `useCallback` 身份变化 | 两页面**常驻 + display 切换**；WS 状态内容未变时**保留旧对象**；全局请求 **20 秒超时兜底** |
+
+### 界面与动效
+
+- 背景改为 **canvas 点阵行波**（左下→右上推进，鼠标附近提亮、点击涟漪），替换原来的 CSS 点阵
+- 跟手光晕缩到 380px + `blur(26px)`，渐变改为**严格单调衰减**（消除中间暗环）
+- 修复 `.ambient > *` 的 `inset: -20%` 误伤点阵与光晕容器导致的**错位/不跟随**
+- 卡片渐变不再跟随鼠标（原来每帧重绘整卡渐变，是前端掉帧主因）
+- 点阵 DPR 降到 1、密度按窗口宽度自适应；鼠标跟手去掉缓动并提到 60 fps
+
+### 工具与文档
+
+- `tools/pip-progress.ps1`：pip 实时进度监视（缓存增长 + 日志跟随）
+- 启动器解释器探测新增 `D:\py310` 优先（`tools/app_launcher.py`、`启动.bat`、`启动-调试.bat`）
+- 新增[测试成绩书](#测试成绩书)与自动生成脚本
 
 ---
 
@@ -178,7 +211,8 @@ trash-sorter/
 
 | 组件 | 版本 |
 | --- | --- |
-| Python | 3.9+（本文档在 3.10 验证） |
+| Python | **3.10**（本机部署在 `D:\py310`；3.9+ 理论可用） |
+| pip 源 | 建议配国内镜像（见[常见问题](#常见问题避坑) Q8），否则下载很慢 |
 | Node.js | 18+ |
 | PlatformIO | 仅烧录 ESP32 时需要 |
 | GPU（可选） | 训练建议 NVIDIA + CUDA；推理 CPU 也可运行 |
@@ -525,6 +559,45 @@ python train.py --data data.yaml --model yolov8n.pt --epochs 100 --imgsz 640 \
 
 ---
 
+## 测试成绩书
+
+按学校模板（`第xx小组_xxx项目_测试成绩书.xlsx`）填写的单体测试书，**表格设计完全沿用模板**，
+只填内容、只换图片。
+
+| 文件 | 说明 |
+| --- | --- |
+| `docs/testbook/第xx小组_垃圾自动识别分类系统_测试成绩书.xlsx` | **主交付物**：封面 / 测试项目（85 条）/ UI界面 / 运行 四个工作表 |
+| `docs/testbook/测试项目.md` | 同一份用例的 Markdown 版，便于评审 |
+| `docs/testbook/cases_final.py` | 用例数据（唯一数据源，改这里即可重新生成） |
+| `docs/testbook/fill_template.py` | 填表脚本：复制模板 → 填文本 → 自动扩展行 → 回填截图 → 生成 md |
+| `docs/testbook/collect.py` | 证据采集：33 个接口清单、12 个接口耗时、摄像头/模型实测 |
+| `docs/testbook/capture_ui.js` | 用 Playwright 截图并导出每个界面元素坐标 |
+| `docs/testbook/annotate_and_embed.py` | 给截图自动画编号+引线，并插入 Excel |
+| `docs/testbook/evidence.json` | 本轮实测数据（接口耗时、模型信息等） |
+| `docs/testbook/shots/` | 原始截图 + 带标注截图 + `boxes.json` |
+
+用例分布（共 85 条，**侧重界面与实跑检测**）：
+
+| 模块 | 条数 | 覆盖内容 |
+| --- | --- | --- |
+| 启动 | 2 | 启动首屏、关闭后进程回收 |
+| UI 界面 | 49 | HUD 状态条、导航、摄像头卡片、识别结果卡片、模型卡片、串口卡片、标注页、主题与适配 |
+| 检测运行 | 34 | 启停、7 类逐类识别、准确率汇总、光照/距离/角度/遮挡鲁棒性、多目标四策略、落桶正确性、冷却、降级、长稳 |
+
+重新生成：
+
+```bash
+python docs/testbook/fill_template.py     # 重新填表（含自动扩行 + 截图 + md）
+python docs/testbook/collect.py           # 需要后端在 8160 端口运行时采集实测数据
+node   docs/testbook/capture_ui.js        # 重新截图（需后端运行）
+python docs/testbook/annotate_and_embed.py # 重新画编号并插图
+```
+
+> 截图里的红色编号与 `UI界面` 表 `B46` 起的编号说明一一对应；编号位置由
+> `annotate_and_embed.py` 的 `SIDE_HINTS` 与 `shots/boxes.json` 控制，可自行微调后重跑。
+
+---
+
 ## 常见问题（避坑）
 
 **1. `OSError: [WinError 1455] 页面文件太小`**
@@ -567,11 +640,57 @@ Windows 上两个线程同时操作同一个 `VideoCapture` 会从 OpenCV 原生
 
 ---
 
+**8. pip 安装非常慢 / 卡住不动**
+
+国内直连 PyPI 很慢，且**默认超时可能被设成了 6000 秒**——连接一旦僵死会傻等 100 分钟，看起来就是"卡死"。
+
+```powershell
+# 换成阿里云镜像（实测 109 ms，比清华 625 ms 快 6 倍）
+python -m pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
+python -m pip config set global.trusted-host mirrors.aliyun.com
+python -m pip config set global.timeout 30
+python -m pip config set global.retries 3
+python -m pip config set global.resume-retries 5      # 大包断点续传
+```
+
+> **不要**设 `global.only-binary :all:`：`pywebview` 依赖的 `proxy_tools` 只有源码包，
+> 强制只装轮子会让 pip 在版本间疯狂回溯，表现为"一直下载但什么都没装上"。
+> 想优先轮子用命令行参数 `--prefer-binary` 即可。
+
+装大包（如 CUDA 版 torch）时建议先 `pip download` 到本地再 `pip install 本地文件`，
+或用 `curl -C -` 断点续传；`D:\py310\python.exe -m pip install --no-deps` 可避免重装一堆已装好的依赖。
+
+**9. 新开 PowerShell 里 `python` 找不到**
+
+环境变量改了之后，**已经打开的窗口**（以及从已运行的 Windows Terminal / 资源管理器派生的窗口）
+仍是旧环境。三种解决办法：
+
+```powershell
+# ① 当前窗口立刻生效
+$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+# ② 重启资源管理器，之后新开窗口即可
+Stop-Process -Name explorer -Force
+# ③ 不依赖 PATH（最稳）
+py -V            # py 启动器在 C:\Windows，永远可用（默认版本已设为 3.10）
+D:\py310\python.exe -V
+```
+
+**10. 列表一直转圈、刷新不出来**
+
+已在[最近更新](#最近更新)里修掉（卸载重挂载、WS 对象引用、请求无超时、MJPEG 连接占满、串口锁阻塞）。
+若仍复现，请把 `logs/desktop.log` 最后 20 行贴出来——关键看**请求有没有到后端**：
+日志里有 `GET /api/xxx` 说明后端在处理（是慢）；完全没有说明请求卡在浏览器侧（连接数/前端阻塞）。
+
 ## 已知限制
 
 - 本机是**单件分拣**结构：一次倾倒只走一个方向，两件不同大类的垃圾必然有一件被分错（见「多目标策略」）
 - 背景差分自动标注依赖**机位、托盘、光照固定**；换了位置或光照需要重拍参考图
 - 透明物体（玻璃杯）与背景差异小，差分可能框不到，需要人工补标
+- **数据集划分存在泄漏（P0，待修）**：`build_dataset` 用随机划分，增强图（`_r90/_fh/...`）
+  会与原图分到不同集合，导致验证集 mAP 虚高（曾出现 mAP50≈0.99）。修法见 `docs/IMPROVEMENTS.md`
+- **前端仍有长任务**：实测 74.6 fps，但鼠标连续移动时会出现 50~120 ms 长任务（WS 推送触发整页重渲染），
+  已记录为待优化项
+- **演示环境为 CPU 版 torch**（`2.14.1+cpu`）：推理单帧约 48~88 ms，答辩够用；重新训练建议装 CUDA 版
 - 串口协议是"一行一个 JSON"，没有应答重传机制；丢包场景未做可靠性保证
 - 未做用户鉴权，只适合本机 / 内网使用
 

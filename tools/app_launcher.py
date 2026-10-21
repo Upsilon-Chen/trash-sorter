@@ -112,7 +112,7 @@ def candidate_pythons() -> list[str]:
     for root in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), "C:\\", "D:\\"):
         if not root:
             continue
-        for name in ("Python313", "Python312", "Python311", "Python310", "miniconda3", "anaconda3", "miniconda", "anaconda"):
+        for name in ("Python313", "Python312", "Python311", "Python310", "py313", "py312", "py311", "py310", "miniconda3", "anaconda3", "miniconda", "anaconda"):
             add(Path(root) / name / "pythonw.exe")
             add(Path(root) / name / "python.exe")
 

@@ -194,28 +194,14 @@ class SerialService:
                 return _PRIORITY_TOP_SCORE - index * _PRIORITY_STEP
         return 0
 
-def _ttl_cache(seconds: float):
-    """给慢接口加 TTL 缓存：串口开着时 comports() 在 Windows 上可能阻塞几十秒。"""
 
-    def decorate(fn):
-        state = {"at": 0.0, "value": None}
-
-        def wrapper(self, *args, **kwargs):
-            now = time.monotonic()
-            if state["value"] is not None and now - state["at"] < seconds:
-                return state["value"]
-            value = fn(self, *args, **kwargs)
-            state["at"], state["value"] = now, value
-            return value
-
-        return wrapper
-
-    return decorate
-
-
-    @_ttl_cache(8.0)
     def list_ports(self) -> list[SerialPortInfo]:
         """扫描串口，按优先级降序（无匹配的排最后）。"""
+        # 8 秒 TTL 缓存：串口已打开时 comports() 在 Windows 上可能阻塞几十秒，
+        # 每次刷新都真扫一遍会把整页拖住。手动刷新最多晚 8 秒，比卡死好。
+        cached = getattr(self, "_ports_cache", None)
+        if cached is not None and time.monotonic() - cached[0] < 8.0:
+            return list(cached[1])
         try:
             raw_ports = list(list_ports.comports())
         except Exception as exc:  # pragma: no cover - 平台异常
@@ -233,6 +219,7 @@ def _ttl_cache(seconds: float):
         ]
         infos = [info for info in infos if info.device]
         infos.sort(key=lambda info: (-info.score, info.device.lower()))
+        self._ports_cache = (time.monotonic(), list(infos))
         return infos
 
     def pick_port(self) -> Optional[str]:
