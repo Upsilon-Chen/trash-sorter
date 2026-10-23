@@ -797,3 +797,66 @@ async def dataset_normalize() -> dict[str, Any]:
             return {"fixed": len(rows)}
 
     return await asyncio.to_thread(run)
+
+@router.delete("/records/{rid}")
+async def delete_record(rid: int) -> dict[str, Any]:
+    """删除一条分拣记录（图片同事务删除）。"""
+    if not db.session.available():
+        raise HTTPException(status_code=503, detail="数据库未连接")
+
+    def run() -> dict[str, Any]:
+        with db.session.session() as session:
+            row = session.get(SortRecord, rid)
+            if row is None:
+                raise HTTPException(status_code=404, detail="记录不存在")
+            session.execute(delete(SortImage).where(SortImage.record_id == rid))
+            session.delete(row)
+            session.commit()
+            return {"ok": True, "id": rid}
+
+    return await asyncio.to_thread(run)
+
+
+class SplitPayload(BaseModel):
+    ids: Optional[list[int]] = None
+    class_name: Optional[str] = None
+    mode: str = Field(default="ratio", pattern="^(ratio|train|val|test|unsplit)$")
+    val_ratio: float = Field(default=0.2, ge=0.0, le=0.9)
+
+
+@router.post("/dataset/split")
+async def dataset_split(payload: SplitPayload) -> dict[str, Any]:
+    """便捷划分：选中若干张 / 整个类别 → 按比例分 train+val，或整体设为某一集合。"""
+    if not db.session.available():
+        raise HTTPException(status_code=503, detail="数据库未连接")
+
+    def run() -> dict[str, Any]:
+        with db.session.session() as session:
+            stmt = select(DatasetImage)
+            if payload.ids:
+                stmt = stmt.where(DatasetImage.id.in_(payload.ids))
+            elif payload.class_name:
+                stmt = stmt.where(DatasetImage.class_name == payload.class_name)
+            rows = session.execute(stmt.order_by(DatasetImage.id.asc())).scalars().all()
+            if not rows:
+                return {"ok": True, "updated": 0, "train": 0, "val": 0}
+
+            if payload.mode == "ratio":
+                val_count = int(round(len(rows) * payload.val_ratio))
+                val_ids = {int(row.id) for row in rows[:val_count]}
+                for row in rows:
+                    row.split = "val" if int(row.id) in val_ids else "train"
+                session.commit()
+                return {"ok": True, "updated": len(rows), "train": len(rows) - val_count, "val": val_count}
+
+            for row in rows:
+                row.split = payload.mode
+            session.commit()
+            return {
+                "ok": True,
+                "updated": len(rows),
+                "train": len(rows) if payload.mode == "train" else 0,
+                "val": len(rows) if payload.mode == "val" else 0,
+            }
+
+    return await asyncio.to_thread(run)

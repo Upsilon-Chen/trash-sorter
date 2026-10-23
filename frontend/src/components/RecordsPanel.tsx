@@ -142,14 +142,16 @@ export default function RecordsPanel({ classes }: Props) {
   } | null>(null);
   const [backfilling, setBackfilling] = useState(false);
 
-  const classOptions = useMemo(
-    () =>
-      Object.entries(classes ?? {}).map(([name, entry]) => ({
-        value: name,
-        label: entry?.label_zh ? `${entry.label_zh}（${name}）` : name,
-      })),
-    [classes],
-  );
+  const classOptions = useMemo(() => {
+    const options = Object.entries(classes ?? {}).map(([name, entry]) => ({
+      value: name,
+      label: entry?.label_zh ? `${entry.label_zh}（${name}）` : name,
+    }));
+    // 7 类之外的人工纠正 / 无法归类的情况
+    options.push({ value: 'other', label: '其它（other）' });
+    options.push({ value: 'unassigned', label: '未归类（待处理）' });
+    return options;
+  }, [classes]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -232,6 +234,23 @@ export default function RecordsPanel({ classes }: Props) {
         message.success(res.already ? `#${row.id} 已经在训练集里` : `#${row.id} 已加入训练集：${res.saved_path ?? ''}`);
       } catch (error) {
         message.error(`加入训练集失败：${(error as Error).message}`);
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [message],
+  );
+
+  const removeRecord = useCallback(
+    async (row: SortRecordItem) => {
+      setBusyId(row.id);
+      try {
+        await call(`/api/records/${row.id}`, { method: 'DELETE' });
+        setItems((prev) => prev.filter((item) => item.id !== row.id));
+        setTotal((prev) => Math.max(0, prev - 1));
+        message.success(`记录 #${row.id} 已删除`);
+      } catch (error) {
+        message.error(`删除失败：${(error as Error).message}`);
       } finally {
         setBusyId(null);
       }
@@ -368,7 +387,7 @@ export default function RecordsPanel({ classes }: Props) {
     {
       title: '操作',
       key: 'actions',
-      width: 268,
+      width: 320,
       render: (_: unknown, row) => (
         <Space size={4} wrap>
           <Button size="small" type="text" onClick={() => setDetail(row)}>
@@ -403,6 +422,9 @@ export default function RecordsPanel({ classes }: Props) {
             onClick={() => void promote(row)}
           >
             入训练集
+          </Button>
+          <Button size="small" danger loading={busyId === row.id} onClick={() => void removeRecord(row)}>
+            删除
           </Button>
         </Space>
       ),

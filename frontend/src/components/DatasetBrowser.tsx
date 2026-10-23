@@ -76,6 +76,8 @@ export default function DatasetBrowser({ classes, onChanged }: Props) {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [preview, setPreview] = useState<DatasetItem | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [splitting, setSplitting] = useState(false);
   const [filters, setFilters] = useState({
     class_name: undefined as string | undefined,
     split: undefined as string | undefined,
@@ -89,6 +91,7 @@ export default function DatasetBrowser({ classes, onChanged }: Props) {
       label: entry?.label_zh ? `${entry.label_zh}（${name}）` : name,
     }));
     // 历史空类别统一归到 unassigned，方便人工改回真实类别
+    options.push({ value: 'other', label: '其它（other）' });
     if (!options.some((item) => item.value === 'unassigned')) {
       options.push({ value: 'unassigned', label: '未归类（待处理）' });
     }
@@ -157,6 +160,27 @@ export default function DatasetBrowser({ classes, onChanged }: Props) {
       }
     },
     [message, onChanged],
+  );
+
+  const doSplit = useCallback(
+    async (body: Record<string, unknown>) => {
+      setSplitting(true);
+      try {
+        const res = await call<{ updated: number; train: number; val: number }>('/api/dataset/split', {
+          method: 'POST',
+          body: JSON.stringify({ ids: selected.length ? selected : undefined, ...body }),
+        });
+        message.success(`已更新 ${res.updated} 张（train ${res.train} / val ${res.val}）`);
+        setSelected([]);
+        await load();
+        onChanged?.();
+      } catch (error) {
+        message.error(`划分失败：${(error as Error).message}`);
+      } finally {
+        setSplitting(false);
+      }
+    },
+    [selected, load, message, onChanged],
   );
 
   const columns: ColumnsType<DatasetItem> = [
@@ -297,6 +321,19 @@ export default function DatasetBrowser({ classes, onChanged }: Props) {
           刷新
         </Button>
         <span style={{ fontSize: 12, opacity: 0.7 }}>共 {total} 张</span>
+        <Tag color={selected.length ? 'blue' : 'default'}>已选 {selected.length}</Tag>
+        <Button size="small" loading={splitting} onClick={() => void doSplit({ mode: 'ratio', val_ratio: 0.2 })}>
+          按 8:2 划分
+        </Button>
+        <Button size="small" loading={splitting} onClick={() => void doSplit({ mode: 'train' })}>
+          全设 train
+        </Button>
+        <Button size="small" loading={splitting} onClick={() => void doSplit({ mode: 'val' })}>
+          全设 val
+        </Button>
+        <Button size="small" loading={splitting} onClick={() => void doSplit({ mode: 'unsplit' })}>
+          清除划分
+        </Button>
       </Space>
 
       <Spin spinning={loading}>
@@ -307,6 +344,11 @@ export default function DatasetBrowser({ classes, onChanged }: Props) {
           dataSource={items}
           pagination={false}
           scroll={{ x: 900 }}
+          rowSelection={{
+            selectedRowKeys: selected,
+            onChange: (keys) => setSelected(keys.map(Number)),
+            preserveSelectedRowKeys: true,
+          }}
           locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有训练图（先抓拍或点「回填历史抓拍」）" /> }}
         />
       </Spin>
