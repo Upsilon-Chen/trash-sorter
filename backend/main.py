@@ -1630,10 +1630,25 @@ async def get_network() -> dict[str, Any]:
     return await asyncio.to_thread(network_info)
 
 
+# ---------------------------------------------------------------------------
+# index.html 禁用缓存
+#
+# 静态资源带哈希可以长缓存，但 **index.html 不能缓存**：
+# Windows WebView2 会缓存它，导致旧 index.html 仍然引用旧 bundle，
+# 表现就是"改完前端，exe 窗口里看不到任何变化"。
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def no_cache_html(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path in ("/", "/index.html") or path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 FRONTEND_DIST_READY = (FRONTEND_DIST / "index.html").is_file()
 if FRONTEND_DIST_READY:
-    # 挂在最后：/api/** 与 /ws 都已在前面的路由里注册，静态资源不会把它们盖掉
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
 
 
