@@ -25,6 +25,7 @@
 - [串口协议](#串口协议)
 - [配置说明](#配置说明)
 - [后端接口](#后端接口)
+- [分拣记录（MySQL）](#分拣记录mysql)
 - [模型训练](#模型训练)
 - [最近更新](#最近更新)
 - [测试成绩书](#测试成绩书)
@@ -640,6 +641,70 @@ python docs/testbook/annotate_and_embed.py # 重新画编号并插图
 
 ---
 
+## 分拣记录（MySQL）
+
+每次**真正下发分拣指令**（自动识别或手动发送）都会落一条记录 + 三张图，可在界面
+`03 记录中心` 里查看、人工判定、一键回流训练集。
+
+### 数据表（MySQL 8 / InnoDB / utf8mb4，SQLite 亦可）
+
+| 表 | 内容 |
+| --- | --- |
+| `sort_records` | 一次下发一行：时间/source/类别/置信度/bbox/桶位/角度/串口结果/模型/会话 + 人工判定（`verified`、`true_class`）+ 回流标记（`in_dataset`、`dataset_image_id`） |
+| `sort_images` | 1:1 存图（LONGBLOB）：`image_raw`（原始无框帧，回流训练用）、`image_marked`（带框，证据展示）、`thumb`（320px 列表用） |
+| `dataset_images` | 训练图片索引（路径/类别/split/来源/sha1/是否已标注），训练仍以磁盘目录为准 |
+
+> 图片拆表是为了**列表查询永不触碰大字段**；缩略图走独立接口并带一天缓存。
+
+### 配置
+
+`backend/config/settings.local.yaml`（**已 gitignore，密码不入库**）：
+
+```yaml
+database:
+  url: "mysql+pymysql://root:123456@127.0.0.1:3306/trash_sorter?charset=utf8mb4"
+records:
+  enabled: true
+  jpeg_quality: 75        # 单条约 180 KB（85 时约 350 KB）
+  max_frame_side: 1280    # 1080p/4K 摄像头自动缩到长边 1280
+  thumb_width: 320
+  retention_days: 30      # 后台每 6 小时清理一次过期记录与图片
+```
+
+**优先级**：环境变量 `TRASH_SORTER_DB_URL` → `settings.local.yaml` → `settings.yaml` → 兜底 SQLite（`data/trash_sorter.db`）。
+数据库不可用时系统照常运行，只是记录功能降级（`/api/db/status` 会给出原因）。
+
+### 接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/db/status` | 连接状态 + 库体积 + 采集器计数 |
+| GET | `/api/records` | 分页列表，支持 class/bucket/source/verified/in_dataset/日期/关键字 |
+| GET | `/api/records/{id}` | 单条详情（含图片元信息） |
+| GET | `/api/records/{id}/image?kind=thumb\|marked\|raw` | 三种尺寸图片（thumb 带 1 天缓存） |
+| GET | `/api/records/stats` | 按类别/桶/天/判定聚合 |
+| PATCH | `/api/records/{id}/verify` | 人工判定：`correct` / `wrong`（wrong 必须给 `true_class`） |
+| POST | `/api/records/{id}/promote` | 把原始帧写入 `training/captures/<类别>/` 并登记训练集索引 |
+| GET | `/api/records-export.csv` | 导出（带 BOM，Excel 不乱码） |
+| GET | `/api/dataset/summary` | 训练集索引汇总 |
+| POST | `/api/dataset/backfill` | 把历史抓拍图回填进索引（幂等） |
+| POST | `/api/records-cleanup` | 按天数清理（支持 `dry_run`） |
+
+### 闭环
+
+```
+识别 → 落桶 → 记录（图 + 类别 + 置信度） → 人工判定（正确 / 纠正真实类别）
+                                        → 一键加入训练集 → 标注 → 训练 → 新模型
+```
+
+### 实现要点
+
+- 采集器 `backend/services/recorder.py` 用**队列 + 独立线程**，包装 `EventBus.emit` 即可挂钩，
+  `pipeline.py` 零改动；队列满丢弃并计数，**绝不阻塞检测循环**
+- 图片先画框再统一缩放（避免 bbox 坐标错位）
+- 建表后自动补复合索引：`(verified, created_at)`、`(in_dataset, created_at)`、`(split, class_name)`
+
+---
 ## 常见问题（避坑）
 
 **1. `OSError: [WinError 1455] 页面文件太小`**

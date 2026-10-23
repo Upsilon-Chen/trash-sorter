@@ -570,6 +570,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             LOGGER.info("运行状态：活跃线程 %d 个（线程池 64）", threading.active_count())
 
     services.tasks.append(asyncio.create_task(log_resources(), name="resource-log"))
+    async def cleanup_records() -> None:
+        """每 6 小时清理一次过期记录（保留天数见 settings.local.yaml 的 records.retention_days）。"""
+        await asyncio.sleep(120)
+        while True:
+            try:
+                from .db.session import _read_yaml, CONFIG_DIR as _CFG
+                from .records_api import cleanup_older_than
+
+                cfg = _read_yaml(_CFG / "settings.local.yaml").get("records") or {}
+                days = int(cfg.get("retention_days", 30) or 30)
+                removed = await asyncio.to_thread(cleanup_older_than, days)
+                if removed:
+                    LOGGER.info("分拣记录自动清理：删除 %s 天前的 %d 条", days, removed)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug("自动清理跳过：%s", exc)
+            await asyncio.sleep(6 * 3600)
+
+    services.tasks.append(asyncio.create_task(cleanup_records(), name="cleanup-records"))
     # ---- 分拣记录（MySQL）：数据库不可用时自动降级，不影响主流程 ----
     global _RECORDER, _EMIT_INNER
     try:

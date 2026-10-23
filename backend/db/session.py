@@ -95,6 +95,7 @@ def init(force: bool = False) -> bool:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             Base.metadata.create_all(engine)
+            _ensure_indexes(engine)
             _engine = engine
             _session_factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
             _last_error = None
@@ -140,6 +141,36 @@ def status() -> dict[str, Any]:
                 info["version"] = str(row[0])
                 info["database"] = str(row[1])
             info["records"] = int(db.execute(text("SELECT COUNT(*) FROM sort_records")).scalar() or 0)
+            try:
+                info["size_bytes"] = int(
+                    db.execute(
+                        text(
+                            "SELECT COALESCE(SUM(data_length + index_length), 0) "
+                            "FROM information_schema.TABLES WHERE table_schema = DATABASE()"
+                        )
+                    ).scalar()
+                    or 0
+                )
+            except Exception:  # noqa: BLE001  SQLite 没有 information_schema
+                info["size_bytes"] = None
     except Exception as exc:  # noqa: BLE001
         info["error"] = str(exc)
     return info
+
+# 已存在的老库不会因为 create_all 得到新索引，这里做一次幂等补齐
+_INDEX_STATEMENTS = (
+    "CREATE INDEX idx_records_verified_time ON sort_records (verified, created_at)",
+    "CREATE INDEX idx_records_dataset_time ON sort_records (in_dataset, created_at)",
+    "CREATE INDEX idx_dataset_split_class ON dataset_images (split, class_name)",
+)
+
+
+def _ensure_indexes(engine: Engine) -> None:
+    """补齐复合索引（已存在则忽略；MySQL/SQLite 都不支持 IF NOT EXISTS 索引）。"""
+    for sql in _INDEX_STATEMENTS:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+            _LOGGER.info("已补索引：%s", sql.split(" ON ")[1].split(" ")[0])
+        except Exception:  # noqa: BLE001
+            continue

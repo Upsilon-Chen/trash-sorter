@@ -246,16 +246,27 @@ class RecordRecorder:
         thumb_q = int(_cfg("thumb_quality", default=70) or 70)
 
         try:
-            height, width = frame.shape[:2]
-            raw_jpeg = _encode_jpeg(frame, quality)
-            if raw_jpeg is None:
-                return None
-
+            # 先画框（此时 bbox 与原图同坐标系），再统一缩放，避免坐标错位
             marked = frame
             try:
                 marked = _draw_detections(frame, detections)
             except Exception as exc:  # noqa: BLE001
                 _LOGGER.debug("绘制检测框失败（用原始帧替代）: %s", exc)
+
+            # 限制长边：1080p/4K 摄像头下把单条记录从 ~1 MB 压到 ~180 KB
+            max_side = int(_cfg("max_frame_side", default=1280) or 1280)
+            raw_frame = frame
+            height, width = raw_frame.shape[:2]
+            if max_side > 0 and max(height, width) > max_side:
+                scale = max_side / float(max(height, width) or 1)
+                size = (max(1, int(width * scale)), max(1, int(height * scale)))
+                raw_frame = cv2.resize(raw_frame, size, interpolation=cv2.INTER_AREA)
+                marked = cv2.resize(marked, size, interpolation=cv2.INTER_AREA)
+                height, width = size[1], size[0]
+
+            raw_jpeg = _encode_jpeg(raw_frame, quality)
+            if raw_jpeg is None:
+                return None
             marked_jpeg = _encode_jpeg(marked, quality) or raw_jpeg
 
             scale = min(1.0, thumb_w / float(width or 1))

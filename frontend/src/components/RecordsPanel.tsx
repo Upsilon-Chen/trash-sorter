@@ -164,15 +164,10 @@ export default function RecordsPanel({ classes }: Props) {
       if (filters.date_from) params.set('date_from', filters.date_from);
       if (filters.date_to) params.set('date_to', filters.date_to);
 
-      const [list, st, dbStatus] = await Promise.all([
-        call<RecordListResponse>(`/api/records?${params.toString()}`),
-        call<StatsResponse>('/api/records/stats?days=7').catch(() => null),
-        call<DbStatus>('/api/db/status').catch(() => null),
-      ]);
+      // 只查列表：翻页/改筛选时不再连带重查统计与数据库状态
+      const list = await call<RecordListResponse>(`/api/records?${params.toString()}`);
       setItems(list.items ?? []);
       setTotal(list.total ?? 0);
-      if (st) setStats(st);
-      if (dbStatus) setStatus(dbStatus);
     } catch (error) {
       message.error(`读取记录失败：${(error as Error).message}`);
       setItems([]);
@@ -185,6 +180,24 @@ export default function RecordsPanel({ classes }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 侧栏数据（统计 + 数据库状态）：只在挂载与手动刷新时查
+  const loadSide = useCallback(async () => {
+    try {
+      const [st, dbStatus] = await Promise.all([
+        call<StatsResponse>('/api/records/stats?days=7').catch(() => null),
+        call<DbStatus>('/api/db/status').catch(() => null),
+      ]);
+      if (st) setStats(st);
+      if (dbStatus) setStatus(dbStatus);
+    } catch {
+      /* 侧栏失败不影响列表 */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSide();
+  }, [loadSide]);
 
   // ---------------------------------------------------------------- 操作
   const verify = useCallback(
@@ -439,7 +452,7 @@ export default function RecordsPanel({ classes }: Props) {
         }
         extra={
           <Space size={8}>
-            <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>
+            <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => { void load(); void loadSide(); void loadDataset(); }}>
               刷新
             </Button>
             <Button size="small" icon={<CloudDownloadOutlined />} onClick={exportCsv}>

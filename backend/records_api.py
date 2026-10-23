@@ -586,3 +586,25 @@ async def records_cleanup(days: int = Query(30, ge=1, le=3650), dry_run: bool = 
             }
 
     return await asyncio.to_thread(run)
+
+def cleanup_older_than(days: int) -> int:
+    """删除 N 天前的记录与其图片，返回删除条数（供定时任务调用，不抛异常）。"""
+    if not db.session.available():
+        return 0
+    cutoff = datetime.now() - timedelta(days=days)
+    try:
+        with db.session.session() as session:
+            ids = [
+                int(i)
+                for (i,) in session.execute(
+                    select(SortRecord.id).where(SortRecord.created_at < cutoff)
+                ).all()
+            ]
+            if not ids:
+                return 0
+            session.execute(delete(SortImage).where(SortImage.record_id.in_(ids)))
+            session.execute(delete(SortRecord).where(SortRecord.id.in_(ids)))
+            session.commit()
+            return len(ids)
+    except Exception:  # noqa: BLE001
+        return 0
