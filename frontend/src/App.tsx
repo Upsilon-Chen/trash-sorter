@@ -41,6 +41,7 @@ const HISTORY_LIMIT = 30;
 const LOG_LIMIT = 50;
 
 /** 左侧侧边栏的页面 */
+import { DatabaseOutlined } from '@ant-design/icons';
 import RecordsPanel from './components/RecordsPanel';
 
 type PageKey = 'dashboard' | 'annotate' | 'records';
@@ -348,7 +349,7 @@ export default function App() {
             items={[
               { key: 'dashboard', icon: <DashboardOutlined />, label: '01 控制台' },
               { key: 'annotate', icon: <EditOutlined />, label: '02 数据标注' },
-              { key: 'records', label: '03 记录中心' },
+              { key: 'records', icon: <DatabaseOutlined />, label: '03 记录中心' },
             ]}
           />
           <div className="hud-ruler" />

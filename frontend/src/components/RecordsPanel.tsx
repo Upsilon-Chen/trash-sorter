@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import DatasetBrowser from './DatasetBrowser';
 import {
   App as AntApp,
   Button,
@@ -607,20 +608,8 @@ export default function RecordsPanel({ classes }: Props) {
           <Col xs={24} xl={12}>
             <div className="section-title">按天</div>
             {bars((stats?.by_day ?? []).map((item) => ({ label: item.day, value: item.count })))}
-            <div className="section-title" style={{ marginTop: 14 }}>训练集索引（按类别）</div>
-            <Table
-              size="small"
-              rowKey="class_name"
-              pagination={false}
-              dataSource={dataset?.classes ?? []}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="点右上「回填历史抓拍」建立索引" /> }}
-              columns={[
-                { title: '类别', dataIndex: 'class_name' },
-                { title: '总数', dataIndex: 'count', align: 'right', width: 80 },
-                { title: '已标注', dataIndex: 'labeled', align: 'right', width: 80 },
-                { title: '未标注', dataIndex: 'unlabeled', align: 'right', width: 80 },
-              ]}
-            />
+            <div className="section-title" style={{ marginTop: 14 }}>训练集内容（可改类别 / 删除，支持分页浏览）</div>
+            <DatasetBrowser classes={classes} onChanged={() => void loadDataset()} />
           </Col>
         </Row>
       </Card>

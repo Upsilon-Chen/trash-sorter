@@ -690,6 +690,20 @@ records:
 | POST | `/api/dataset/backfill` | 把历史抓拍图回填进索引（幂等） |
 | POST | `/api/records-cleanup` | 按天数清理（支持 `dry_run`） |
 
+### 训练集管理（增删改查）
+
+记录中心的「统计 · 训练集索引」里可以直接浏览训练图内容并维护索引：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/dataset/images` | 分页列表（支持类别/划分/标注/路径筛选） |
+| GET | `/api/dataset/images/{id}/thumb?w=200` | 缩略图（实时缩放，带一天缓存） |
+| PATCH | `/api/dataset/images/{id}` | 改类别 / 改 train·val 划分 / 改标注状态 / 改备注 |
+| DELETE | `/api/dataset/images/{id}?delete_file=false` | 从索引移除（可选同时删磁盘文件） |
+| POST | `/api/dataset/normalize` | 修复历史空类别（统一归为 `unassigned`，界面可改回真实类别） |
+
+> 回填时会**跳过**直接放在 `training/captures/` 根目录、无法判定类别的图片，
+> 单独计入 `no_class`，避免产生空类别行。
 ### 闭环
 
 ```

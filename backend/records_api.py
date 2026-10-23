@@ -478,7 +478,7 @@ async def dataset_backfill(payload: BackfillPayload) -> dict[str, Any]:
         if payload.limit:
             files = files[: payload.limit]
 
-        inserted = skipped = updated = 0
+        inserted = skipped = updated = no_class = 0
         with db.session.session() as session:
             existing = {
                 str(p or "")
@@ -509,7 +509,12 @@ async def dataset_backfill(payload: BackfillPayload) -> dict[str, Any]:
                         height, width = img.shape[:2]
                 except Exception:  # noqa: BLE001
                     pass
-                class_name = path.parent.name if path.parent != CAPTURES_DIR else ""
+                # 直接放在 captures 根目录的图片无法判定类别 → 跳过并单独计数，
+                # 避免产生 class_name='' 的空类别行（需要人工归位后再回填）
+                if path.parent == CAPTURES_DIR:
+                    no_class += 1
+                    continue
+                class_name = path.parent.name
                 if rel in existing:
                     row = session.execute(select(DatasetImage).where(DatasetImage.path == rel)).scalar_one_or_none()
                     if row is not None:
@@ -539,6 +544,7 @@ async def dataset_backfill(payload: BackfillPayload) -> dict[str, Any]:
             "inserted": inserted,
             "updated": updated,
             "skipped": skipped,
+            "no_class": no_class,
             "total": inserted + updated + skipped,
         }
 
@@ -608,3 +614,186 @@ def cleanup_older_than(days: int) -> int:
             return len(ids)
     except Exception:  # noqa: BLE001
         return 0
+
+# ---------------------------------------------------------------------------
+# 训练集索引：增删改查（P2）
+# ---------------------------------------------------------------------------
+class DatasetUpdatePayload(BaseModel):
+    class_name: Optional[str] = Field(default=None, max_length=32)
+    split: Optional[str] = Field(default=None, pattern="^(train|val|test|unsplit)$")
+    labeled: Optional[bool] = None
+    note: Optional[str] = Field(default=None, max_length=255)
+
+
+@router.get("/dataset/images")
+async def dataset_images(
+    page: int = Query(1, ge=1),
+    size: int = Query(24, ge=1, le=200),
+    class_name: Optional[str] = None,
+    split: Optional[str] = None,
+    labeled: Optional[bool] = None,
+    source: Optional[str] = None,
+    q: Optional[str] = None,
+) -> dict[str, Any]:
+    """训练集索引列表（用于记录中心里浏览具体内容）"""
+    if not db.session.available():
+        raise HTTPException(status_code=503, detail="数据库未连接")
+
+    def run() -> dict[str, Any]:
+        conds = []
+        if class_name:
+            conds.append(DatasetImage.class_name == class_name)
+        if split:
+            conds.append(DatasetImage.split == split)
+        if labeled is not None:
+            conds.append(DatasetImage.labeled.is_(labeled))
+        if source:
+            conds.append(DatasetImage.source == source)
+        if q:
+            conds.append(DatasetImage.path.like(f"%{q}%"))
+        with db.session.session() as session:
+            total = int(
+                session.execute(select(func.count()).select_from(DatasetImage).where(*conds)).scalar() or 0
+            )
+            rows = (
+                session.execute(
+                    select(DatasetImage)
+                    .where(*conds)
+                    .order_by(DatasetImage.id.desc())
+                    .limit(size)
+                    .offset((page - 1) * size)
+                )
+                .scalars()
+                .all()
+            )
+            return {
+                "total": total,
+                "page": page,
+                "size": size,
+                "items": [
+                    {
+                        "id": int(row.id),
+                        "path": row.path,
+                        "class_name": row.class_name,
+                        "split": row.split,
+                        "source": row.source,
+                        "labeled": bool(row.labeled),
+                        "width": row.width,
+                        "height": row.height,
+                        "record_id": row.record_id,
+                        "created_at": row.created_at.isoformat(sep=" ", timespec="seconds") if row.created_at else None,
+                        "note": row.note,
+                    }
+                    for row in rows
+                ],
+            }
+
+    return await asyncio.to_thread(run)
+
+
+@router.patch("/dataset/images/{image_id}")
+async def dataset_update(image_id: int, payload: DatasetUpdatePayload) -> dict[str, Any]:
+    """改类别 / 改 split / 改已标注 / 改备注"""
+    if not db.session.available():
+        raise HTTPException(status_code=503, detail="数据库未连接")
+
+    def run() -> dict[str, Any]:
+        with db.session.session() as session:
+            row = session.get(DatasetImage, image_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="索引不存在")
+            if payload.class_name is not None:
+                row.class_name = payload.class_name.strip() or row.class_name
+            if payload.split is not None:
+                row.split = payload.split
+            if payload.labeled is not None:
+                row.labeled = payload.labeled
+            if payload.note is not None:
+                row.note = payload.note[:255]
+            session.commit()
+            return {"ok": True, "id": image_id, "class_name": row.class_name, "split": row.split,
+                    "labeled": bool(row.labeled), "note": row.note}
+
+    return await asyncio.to_thread(run)
+
+
+@router.delete("/dataset/images/{image_id}")
+async def dataset_delete(image_id: int, delete_file: bool = Query(False)) -> dict[str, Any]:
+    """从索引删除（delete_file=true 时同时删除磁盘图片）"""
+    if not db.session.available():
+        raise HTTPException(status_code=503, detail="数据库未连接")
+
+    def run() -> dict[str, Any]:
+        with db.session.session() as session:
+            row = session.get(DatasetImage, image_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="索引不存在")
+            path = row.path
+            session.delete(row)
+            session.commit()
+        removed_file = False
+        if delete_file:
+            try:
+                target = (ROOT_DIR / path).resolve()
+                if str(target).startswith(str(ROOT_DIR)) and target.is_file():
+                    target.unlink()
+                    removed_file = True
+            except Exception:  # noqa: BLE001
+                removed_file = False
+        return {"ok": True, "id": image_id, "path": path, "removed_file": removed_file}
+
+    return await asyncio.to_thread(run)
+
+
+@router.get("/dataset/images/{image_id}/thumb")
+async def dataset_thumb(image_id: int, w: int = Query(200, ge=48, le=640)):
+    """训练集图片缩略图（从磁盘读，实时缩放，带一天缓存）"""
+    if not db.session.available():
+        raise HTTPException(status_code=503, detail="数据库未连接")
+
+    def run() -> Optional[bytes]:
+        import cv2
+        import numpy as np
+
+        with db.session.session() as session:
+            row = session.get(DatasetImage, image_id)
+            if row is None:
+                return None
+            path = row.path
+        target = (ROOT_DIR / path).resolve()
+        if not target.is_file():
+            return None
+        img = cv2.imread(str(target))
+        if img is None:
+            return None
+        h, width = img.shape[:2]
+        scale = min(1.0, w / float(width or 1))
+        if scale < 1.0:
+            img = cv2.resize(img, (max(1, int(width * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+        ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+        return buf.tobytes() if ok else None
+
+    blob = await asyncio.to_thread(run)
+    if not blob:
+        return Response(content=_placeholder_jpeg(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    return Response(content=blob, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.post("/dataset/normalize")
+async def dataset_normalize() -> dict[str, Any]:
+    """修复历史空类别：class_name 为空的索引改为 unassigned，便于在界面里人工归类。"""
+    if not db.session.available():
+        raise HTTPException(status_code=503, detail="数据库未连接")
+
+    def run() -> dict[str, Any]:
+        with db.session.session() as session:
+            rows = session.execute(
+                select(DatasetImage).where((DatasetImage.class_name == "") | (DatasetImage.class_name.is_(None)))
+            ).scalars().all()
+            for row in rows:
+                row.class_name = "unassigned"
+                row.note = ((row.note or "") + " [空类别，待归类]").strip()[:255]
+            session.commit()
+            return {"fixed": len(rows)}
+
+    return await asyncio.to_thread(run)
