@@ -63,7 +63,7 @@ import {
 
 import CameraPreview from './CameraPreview';
 
-type Filter = 'all' | 'unlabeled' | 'labeled';
+type Filter = 'all' | 'unlabeled' | 'labeled' | `class:${string}`;
 
 /** 画框时的归一化矩形（0~1） */
 interface DraftBox {
@@ -404,11 +404,35 @@ function AnnotatePanel({
     };
   }, [clientId]);
 
+  /** 推断图片所属类别：优先后端字段，其次相对路径目录名，再退回文件名前缀 */
+  const classOf = useCallback((item: { name?: string; class_name?: string }): string => {
+    if (item.class_name) return item.class_name;
+    const name = item.name ?? '';
+    if (name.includes('/')) return name.split('/')[0];
+    const matched = name.match(/^([a-zA-Z]+)[_-]/);
+    return matched ? matched[1] : '';
+  }, []);
+
+  const classStats = useMemo(() => {
+    const counter = new Map<string, number>();
+    images.forEach((item) => {
+      const key = classOf(item);
+      if (key) counter.set(key, (counter.get(key) ?? 0) + 1);
+    });
+    return Array.from(counter.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [images, classOf]);
+
   const filtered = useMemo(() => {
     if (filter === 'labeled') return images.filter((item) => item.labeled);
     if (filter === 'unlabeled') return images.filter((item) => !item.labeled);
+    if (filter.startsWith('class:')) {
+      const target = filter.slice(6);
+      return images.filter((item) => classOf(item) === target);
+    }
     return images;
-  }, [filter, images]);
+  }, [filter, images, classOf]);
 
   const index = useMemo(
     () => (current ? filtered.findIndex((item) => item.name === current) : -1),
@@ -1135,6 +1159,20 @@ function AnnotatePanel({
             ]}
             style={{ marginBottom: 10 }}
           />
+          {classStats.length > 1 && (
+            <Select
+              allowClear
+              size="small"
+              style={{ width: '100%', marginBottom: 10 }}
+              placeholder="按类别筛选（不选 = 全部类别）"
+              value={filter.startsWith('class:') ? filter : undefined}
+              onChange={(value) => setFilter((value ?? 'all') as Filter)}
+              options={classStats.map((item) => ({
+                value: `class:${item.name}`,
+                label: `${item.name}（${item.count} 张）`,
+              }))}
+            />
+          )}
           {filtered.length > listLimit && (
             <Button
               block
