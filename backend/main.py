@@ -1644,6 +1644,8 @@ async def no_cache_html(request, call_next):
     if path in ("/", "/index.html") or path.endswith(".html"):
         response.headers["Cache-Control"] = "no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
+        # 追加：让 Chromium/WebView2 主动丢弃已缓存的旧资源（一次性生效）
+        response.headers["Clear-Site-Data"] = '"cache"'
     return response
 
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
