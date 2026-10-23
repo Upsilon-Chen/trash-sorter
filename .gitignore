@@ -88,3 +88,8 @@ RhineLabUI-main/
 # 生成过程中的临时日志（截图目录里的 .err/.log）
 docs/testbook/shots/*.err
 docs/testbook/shots/*.log
+# ---------------------------------------------------------------- 本地私有配置 / 数据
+# 数据库密码等只放本地，绝不入库
+backend/config/settings.local.yaml
+# 分拣记录相关本地数据（若改用文件存储时才会用到）
+/data/

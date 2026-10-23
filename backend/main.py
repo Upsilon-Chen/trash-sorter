@@ -511,7 +511,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         services.serial,
         settings=settings,
         classes=classes,
-        emit=services.bus.emit,
+        emit=_emit_with_records,
     )
     services.camera.set_overlay_provider(services.pipeline.get_overlay)
     services.annotator = Annotator(
@@ -570,6 +570,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             LOGGER.info("运行状态：活跃线程 %d 个（线程池 64）", threading.active_count())
 
     services.tasks.append(asyncio.create_task(log_resources(), name="resource-log"))
+    # ---- 分拣记录（MySQL）：数据库不可用时自动降级，不影响主流程 ----
+    global _RECORDER, _EMIT_INNER
+    try:
+        from . import db as _db
+        from .services.recorder import RecordRecorder
+
+        _EMIT_INNER = services.bus.emit
+        _db.session.init()
+        _RECORDER = RecordRecorder(
+            services.camera,
+            model_name_fn=lambda: (services.detector.status() or {}).get("current"),
+        )
+        _RECORDER.start()
+        app.state.recorder = _RECORDER
+        # 路由在模块尾部注册（lifespan 内注册不生效）
+        LOGGER.info(
+            "分拣记录已接入：数据库 %s", "可用" if _db.session.available() else "不可用（已降级）"
+        )
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("分拣记录模块初始化失败（主流程不受影响）: %s", exc)
 
     LOGGER.info("后端就绪，等待前端连接")
     try:
@@ -600,6 +620,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="YOLO 垃圾自动识别分类系统", version="1.0.0", lifespan=lifespan)
+# ---------------------------------------------------------------------------
+# 分拣记录（MySQL）—— 必须在 app 创建后立刻注册，
+# 且要早于后面的 app.mount("/", StaticFiles) 挂载，否则请求会被静态资源吃掉。
+# ---------------------------------------------------------------------------
+try:
+    from .records_api import router as _records_router
+
+    app.include_router(_records_router)
+    logging.getLogger("trash_sorter").info("分拣记录接口已注册（9 个路由）")
+except Exception as _exc:  # noqa: BLE001
+    logging.getLogger("trash_sorter").warning("分拣记录接口注册失败（不影响主流程）: %s", _exc)
 
 try:
     _app_settings: dict[str, Any] = load_settings() if SETTINGS_PATH.is_file() else deep_merge(DEFAULT_SETTINGS, {})
@@ -1625,3 +1656,27 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ---------------------------------------------------------------------------
+# 分拣记录（MySQL）
+#
+# 不侵入 pipeline：pipeline 每次下发都会 emit({"type": "sort", ...})，
+# 这里包一层即可把"一次下发"落库（EventBus.emit 是线程安全的同步函数）。
+# ---------------------------------------------------------------------------
+_EMIT_INNER: Any = None
+_RECORDER: Any = None
+
+
+def _emit_with_records(event: dict[str, Any]) -> Any:
+    """先喂给记录采集器（绝不抛异常），再转发给原 EventBus。"""
+    try:
+        recorder = globals().get("_RECORDER")
+        if recorder is not None:
+            recorder.on_event(event)
+    except Exception:  # noqa: BLE001
+        pass
+    inner = globals().get("_EMIT_INNER")
+    if inner is None:
+        return None
+    return inner(event)

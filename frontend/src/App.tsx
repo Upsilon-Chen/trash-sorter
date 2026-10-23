@@ -41,7 +41,9 @@ const HISTORY_LIMIT = 30;
 const LOG_LIMIT = 50;
 
 /** 左侧侧边栏的页面 */
-type PageKey = 'dashboard' | 'annotate';
+import RecordsPanel from './components/RecordsPanel';
+
+type PageKey = 'dashboard' | 'annotate' | 'records';
 
 /**
  * 内容相同就返回旧对象（浅比较用 JSON，状态对象都很小）。
@@ -346,13 +348,16 @@ export default function App() {
             items={[
               { key: 'dashboard', icon: <DashboardOutlined />, label: '01 控制台' },
               { key: 'annotate', icon: <EditOutlined />, label: '02 数据标注' },
+              { key: 'records', label: '03 记录中心' },
             ]}
           />
           <div className="hud-ruler" />
           <div className="sider-hint">
             {page === 'dashboard'
-              ? '摄像头 · 模型 · 串口'
-              : '给抓拍图打框，导出成可训练数据集'}
+  ? '摄像头 · 模型 · 串口'
+  : page === 'annotate'
+    ? '给抓拍图打框，导出成可训练数据集'
+    : '每次下发一条记录 · 人工判定 · 回流训练集'}
           </div>
         </aside>
 
@@ -406,6 +411,9 @@ export default function App() {
               onStateRefresh={requestState}
             />
           </div>
+            <div className="page-layer" style={{ display: page === 'records' ? 'block' : 'none' }}>
+              <RecordsPanel classes={classes} onStateRefresh={requestState} />
+            </div>
         </main>
       </div>
 

@@ -31,3 +31,7 @@ pyserial>=3.5
 # 用 Windows 自带的 WebView2 把界面渲染成原生窗口（没有地址栏/标签页）。
 # 只在 Windows 上装；不装也能用浏览器访问 http://127.0.0.1:8000
 pywebview>=5.0 ; sys_platform == "win32"
+# ---- 分拣记录（MySQL / SQLite 通用）----
+SQLAlchemy>=2.0
+PyMySQL>=1.1
+cryptography>=41        # MySQL 8 的 caching_sha2_password 需要
