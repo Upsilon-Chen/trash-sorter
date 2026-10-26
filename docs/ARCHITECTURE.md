@@ -36,7 +36,7 @@ MySQL ◄── backend/db（记录：一次下发一行 + 三张图）
 | `services/annotator.py` / `augmenter.py` | 标注读写、数据增强 | 旋转/翻转时**同步变换标签坐标** |
 | `services/recorder.py` | 分拣记录采集（新增） | 队列+独立线程；抓帧→编码三图→写 MySQL；**零阻塞检测线程** |
 | `db/models.py`、`db/session.py` | 表结构与连接（新增） | `sort_records` / `sort_images` / `dataset_images`；DB 挂了自动降级 |
-| `records_api.py` | 记录/数据集接口 | 分页、筛选、图片三尺寸、人工判定、回流训练集、CSV、回填、清理、**训练集增删改查** |
+| `records_api.py` | 记录/数据集接口 | 分页、筛选、图片三尺寸、人工判定、回流、CSV、回填、清理、训练集增删改查、**批量划分 `POST /api/dataset/split`** |
 | `config/settings.yaml` | 公共配置 | 摄像头/检测/串口参数 |
 | `config/settings.local.yaml` | **本机私有**（不入库） | 数据库密码、记录参数 |
 | `config/classes.json` | 7 类 → 4 物理桶映射 | `groups` + `priority` + 每类 `cooldown` |
@@ -69,8 +69,8 @@ camera 抓帧 ──► detector 推理 ──► classes.json 查槽位 ──�
 | `components/ModelPanel.tsx` | 模型列表/加载/置信度阈值 |
 | `components/SerialPanel.tsx` | 串口连接/手动分拣/报文日志 |
 | `components/ResultPanel.tsx` | 识别结果、置信度表盘、统计图、下发历史 |
-| `components/AnnotatePanel.tsx` | 数据标注（画框、保存、增强、参考图） |
-| `components/RecordsPanel.tsx` | **记录中心**：列表/筛选/缩略图/详情/判定/回流/统计 |
+| `components/AnnotatePanel.tsx` | 数据标注（画框、保存、增强、参考图、**按类别筛选列表**） |
+| `components/RecordsPanel.tsx` | **记录中心**：列表/筛选/缩略图/详情/判定/回流/统计/**删除** |
 | `components/DatasetBrowser.tsx` | **训练集浏览器**：缩略图浏览 + 改类别/划分 + 删除（增删改查） |
 | `components/Ambient.tsx`、`DotWave.tsx` | 背景动效（光晕 + canvas 点阵行波） |
 | `hooks/`、`Charts.tsx`、`Hud.tsx` | 复用组件 |
